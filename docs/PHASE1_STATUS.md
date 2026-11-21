@@ -34,7 +34,7 @@ This is the execution tracker, not a claim that Phase 1 is production-ready. “
 
 ### G3 — Core-derived asset state
 
-**Status: NOT STARTED; DESIGN APPROVAL REQUIRED.** First write the design note for `asset_state_current`/history, event/freshness derivation, and alert/AI evidence; stop for human approval before implementation. Reported state remains evidence and cannot override Core health.
+**Status: DESIGN DRAFT — HUMAN APPROVAL PENDING.** `docs/ASSET_STATE_DESIGN.md` records the verified current behavior, additive schema and derivation proposal, compatibility boundary, test outline, and open decisions. No code, migration, API shape, or test was changed/run. Reported state remains evidence and cannot override Core health. Implementation is blocked on the human decisions listed in the design note.
 
 ### G4 — multi-building proof
 
@@ -82,3 +82,4 @@ This is the execution tracker, not a claim that Phase 1 is production-ready. “
 
 - **2026-11-20 — G1 completed:** code commit `d39c582`, docs commit `ef8cde0`.
 - **2026-11-20 — G2 completed:** code/config commit `46b1099`, integration/docs commit `8517066`. G2 database work used only the disposable E3 PostgreSQL container and isolated `anzma_e*_g2_*` databases. During this work, the shared worktree moved to `main` with many staged changes; those were left untouched, and status tracking was finished in an isolated worktree on the feature branch.
+- **2026-11-21 — G3 design drafted:** `docs/ASSET_STATE_DESIGN.md`; docs-only proposal, awaiting human approval. No tests run because this is the required design gate.
