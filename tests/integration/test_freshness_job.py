@@ -19,8 +19,8 @@ from app.services.freshness import run_once
 
 ROOT = Path(__file__).resolve().parents[2]
 DATABASE = os.environ.get("ANZMA_E3_TEST_DATABASE", "")
-# Later than the fresh-volume migration timestamp so its global defaults are active.
-NOW = datetime(2026, 11, 20, 23, 0, tzinfo=timezone.utc)
+# Later than migration-created defaults, including on runs after this test was authored.
+NOW = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(seconds=5)
 
 
 def test_db():

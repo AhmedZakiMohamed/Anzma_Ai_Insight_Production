@@ -16,7 +16,7 @@ from app.config.source_liveness import SourceLivenessConfig
 
 
 DATABASE = os.environ.get("ANZMA_E4B_TEST_DATABASE", "")
-NOW = datetime(2026, 11, 20, 23, 0, tzinfo=timezone.utc)
+NOW = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(seconds=5)
 
 
 class SourceLivenessTests(unittest.TestCase):
