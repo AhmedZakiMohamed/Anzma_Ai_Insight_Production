@@ -43,6 +43,9 @@ class MultiBuildingG4Tests(unittest.TestCase):
         with cls.conn.cursor() as cur:
             cur.execute("SELECT building_id FROM buildings WHERE building_code='MAIN-TOWER'")
             cls.building_a_id = cur.fetchone()["building_id"]
+            cur.execute("SELECT timezone,work_start_local,work_end_local FROM buildings WHERE building_id=%s",
+                        (cls.building_a_id,))
+            cls.building_a_schedule = cur.fetchone()
             cur.execute("SELECT asset_id FROM assets WHERE asset_code='HVAC-AHU-01'")
             cls.asset_a_id = cur.fetchone()["asset_id"]
             cur.execute("SELECT max(ts) AS last FROM (SELECT max(ts) ts FROM v_telemetry_valid UNION ALL SELECT max(ts) ts FROM event_records) x")
@@ -102,6 +105,7 @@ class MultiBuildingG4Tests(unittest.TestCase):
 
     def test_second_building_isolated_through_contract_and_evaluators(self):
         before = self._a_snapshot()
+        self.assertNotEqual("America/New_York", self.building_a_schedule["timezone"])
         building_code = f"G4-{self.suffix}"
         building_name = f"G4 North Campus {self.suffix}"
         source_code = f"G4S-{self.suffix}"
