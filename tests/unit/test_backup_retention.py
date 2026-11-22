@@ -105,6 +105,27 @@ class BackupRetentionTests(unittest.TestCase):
         self.assertTrue(old.exists())
         self.assertEqual(json.loads(result.stdout.splitlines()[-1])["event"], "BACKUP_FAILED")
 
+    def test_invalid_mtime_is_skipped_without_deleting_backups(self):
+        backups = [
+            self._seed("20261001_000000", 45),
+            self._seed("20261002_000000", 35),
+            self._seed("20261003_000000", 25),
+        ]
+        self._tool(
+            "stat",
+            '#!/bin/sh\ncase "$1" in\n'
+            '  -c) printf "not-a-number\\n"; exit 0;;\n'
+            '  -f) printf "File: filesystem status\\n"; exit 1;;\n'
+            '  *) exit 1;;\nesac\n',
+        )
+
+        result = self._run("--dry-run")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("WARNING: could not read numeric mtime; skipping retention", result.stderr)
+        self.assertNotIn("Would delete", result.stdout)
+        self.assertTrue(all(path.exists() for path in backups))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -154,6 +154,19 @@ valid_backup() {
     [[ "$expected" == "$actual" ]]
 }
 
+file_mtime() {
+    local path=$1 value
+    if value=$(stat -c %Y -- "$path" 2>/dev/null) && [[ "$value" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$value"
+        return 0
+    fi
+    if value=$(stat -f %m "$path" 2>/dev/null) && [[ "$value" =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$value"
+        return 0
+    fi
+    return 1
+}
+
 retain_backups() {
     local min_keep=$1 keep_days=$2 current=$3 path base count=0 mtime cutoff now size
     local -a paths=()
@@ -171,7 +184,10 @@ retain_backups() {
     while IFS= read -r path; do
         count=$((count + 1))
         [[ "$path" != "$current" ]] || continue
-        mtime=$(stat -f %m "$path" 2>/dev/null || stat -c %Y "$path" 2>/dev/null) || continue
+        if ! mtime=$(file_mtime "$path"); then
+            printf 'WARNING: could not read numeric mtime; skipping retention for %s.\n' "$path" >&2
+            continue
+        fi
         if (( count > min_keep && mtime < cutoff )); then
             if [[ "$DRY_RUN" -eq 1 ]]; then
                 printf 'Would delete %s and its sidecars.\n' "$path"
