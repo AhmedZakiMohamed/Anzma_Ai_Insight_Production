@@ -484,7 +484,7 @@ def _():
     assert client.get("/static/style.css").status_code == 200 and client.get("/static/chart.umd.js").status_code == 200
     assert client.get("/health").json() == {"status": "ok"}
     html = client.get("/").text
-    assert 'api("overview")' in html and "/alerts?limit=50" in html
+    assert 'api("overview")' in html and "/alerts?limit=200" in html
 
 
 @test("database down: every page endpoint answers 503 with a message instead of crashing")
