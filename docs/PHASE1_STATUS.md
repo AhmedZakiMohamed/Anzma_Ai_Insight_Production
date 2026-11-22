@@ -12,7 +12,7 @@ This is the execution tracker, not a claim that Phase 1 is production-ready. “
 - **A, B1–B3 (1.1 foundation): DONE.** Operator bearer/session authentication is behind a replaceable authenticator; ingestion source keys are separate. Per-source ingestion rate limiting, CORS allowlisting, key lifecycle audit logging, authentication options, and TLS reverse-proxy guidance are present. The final enterprise identity model remains a human decision. PostgreSQL is still published on loopback by default, so G10's “no published DB port” requirement is not complete.
 - **C1–C2 (1.8 backup foundation): DONE for the scoped local rehearsal.** `scripts/backup_db.sh` creates retained backups; `scripts/restore_verify.sh` and `docs/RESTORE_RUNBOOK.md` record one successful scratch restore. This is not recurring production scheduling or a production restore.
 - **D1–D3 implementation (1.2 foundation): PARTIAL.** The simulator design and separate HTTP-only package exist, including deterministic records, persisted batch IDs, durable outbox, retry/drain and keepalive behavior. The real-Core acceptance test is skipped unless explicitly configured; outage/restart and legacy-seed parity evidence still need G7. Do not retire seed/injection paths without human approval.
-- **E1–E5 (1.3 foundation): DONE.** Freshness expectations/admin, evaluator, data-gap lifecycle, source liveness/classification, authenticated read APIs, and the dashboard evidence panel are present. E6's replacement of ISS-008 UTC+2 / 08:00–18:00 logic is still required by G1. The evaluator has no Compose scheduler yet (G2).
+- **E1–E6 (1.3 foundation): IMPLEMENTED.** Freshness expectations/admin, evaluator, data-gap lifecycle, source liveness/classification, authenticated read APIs, dashboard evidence panel, and G1 building-local alert schedules are present. G2 adds an opt-in Compose evaluator service; it must be explicitly enabled for snapshots to remain current.
 
 ## Ordered work packages
 
@@ -26,11 +26,15 @@ This is the execution tracker, not a claim that Phase 1 is production-ready. “
 
 ### G2 — scheduled freshness job
 
-**Status: NOT STARTED.** The evaluator/job CLI exists; Compose scheduling, single-instance lock, graceful shutdown and service-level failure/restart handling remain. Evidence and commit: pending.
+**Status: DONE — code commit `46b1099`; integration/docs commit `8517066`.** The evaluator is an opt-in `freshness` Compose profile, independent of the API/Ollama services. It uses a PostgreSQL session advisory lock for single-instance ownership, configurable interval/lock-retry settings, graceful SIGTERM/SIGINT handling, structured pass/failure lines, and Compose restart handling. Existing E3/E4 logic provides idempotent series/gap writes, source liveness and cause classification. No migration was added.
+
+**Verification:** `python3 -m unittest tests.unit.test_freshness_job` — 9/9; `python3 -m unittest discover -s tests/unit` — 63 run, 1 skipped, pass; `tests/integration/test_freshness_job.py` — 7/7 on disposable `anzma_e3_g2_final`; `tests/integration/test_freshness_gaps.py` — 5/5; `tests/integration/test_source_liveness.py` — 6/6. Compose config confirmed profile `freshness`, no published ports, DB-only dependency, and restart policy `unless-stopped`. A real one-shot Compose run on disposable `anzma_e3_g2_baseline2` evaluated 45 series, 2 sources and acquired/released the DB lock. The live profile service ran a pass and stopped on SIGTERM with exit code 0 and `FRESHNESS_LOCK_RELEASED` in logs.
+
+**Test adjustment:** the integration test asserts the exact output lifecycle (`FRESHNESS_LOCK_ACQUIRED`, one `FRESHNESS_PASS`, `FRESHNESS_LOCK_RELEASED`) and retains all pass-summary/count assertions. The first integration attempt used a disposable template missing migration 011; after verifying that schema mismatch, reran against a clean 011 template. The initial single-line JSON assertion failed after lock records were added; the lifecycle assertion passed 7/7.
 
 ### G3 — Core-derived asset state
 
-**Status: NOT STARTED; DESIGN APPROVAL REQUIRED.** First write the design note for `asset_state_current`/history, event/freshness derivation, and alert/AI evidence; stop for human approval before implementation. Reported state remains evidence and cannot override Core health.
+**Status: DESIGN DRAFT — HUMAN APPROVAL PENDING.** `docs/ASSET_STATE_DESIGN.md` records the verified current behavior, additive schema and derivation proposal, compatibility boundary, test outline, and open decisions. No code, migration, API shape, or test was changed/run. Reported state remains evidence and cannot override Core health. Implementation is blocked on the human decisions listed in the design note.
 
 ### G4 — multi-building proof
 
@@ -76,4 +80,6 @@ This is the execution tracker, not a claim that Phase 1 is production-ready. “
 
 ## Session log
 
-- **2026-11-20 — G1 completed:** code commit `d39c582`; documentation/status commit follows separately. The initial status file was the only untracked item at preflight; no prior user changes were present. No shared container/database was accessed or modified.
+- **2026-11-20 — G1 completed:** code commit `d39c582`, docs commit `ef8cde0`.
+- **2026-11-20 — G2 completed:** code/config commit `46b1099`, integration/docs commit `8517066`. G2 database work used only the disposable E3 PostgreSQL container and isolated `anzma_e*_g2_*` databases. During this work, the shared worktree moved to `main` with many staged changes; those were left untouched, and status tracking was finished in an isolated worktree on the feature branch.
+- **2026-11-21 — G3 design drafted:** `docs/ASSET_STATE_DESIGN.md`; docs-only proposal, awaiting human approval. No tests run because this is the required design gate.
