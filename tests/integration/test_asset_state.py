@@ -13,7 +13,7 @@ import psycopg
 from psycopg.rows import dict_row
 
 from app.repositories.dashboard_core_pg import asset_status_rows
-from app.services.asset_state import run_once
+from app.services.asset_state import alert_evidence_context, run_once
 
 
 HOST = os.getenv("PGHOST", "")
@@ -171,6 +171,14 @@ class AssetStatePersistenceTests(unittest.TestCase):
         self.assertTrue(self.current()["evidence_summary"]["attribution_ambiguous"])
 
     def test_core_availability_events_only_and_quality_provenance(self):
+        self.add_series(self.source_id, "STALE")
+        self.conn.execute(
+            """INSERT INTO source_liveness_current
+                   (source_id,state,evaluated_at,last_received_at,expected_interval_seconds,age_seconds,reason_code,
+                    reason_message,active_series_count,stale_series_count,missing_series_count,mass_stale)
+               VALUES (%s,'ALIVE',%s,%s,300,0,'RECEIVED','source recently received a batch',1,0,0,false)""",
+            (self.source_id, self.now, self.now),
+        )
         # A source-reported availability is not used to set Core availability.
         state_batch = self.conn.execute(
             """INSERT INTO ingestion_batches
@@ -215,6 +223,17 @@ class AssetStatePersistenceTests(unittest.TestCase):
         refs = {f"telemetry:{item['telemetry_id']}" for item in evidence["measurements"]}
         self.assertNotIn(f"telemetry:{bad_id}", refs)
         self.assertIn(f"telemetry:{legacy_id}", evidence["legacy_or_unattributed_refs"])
+        context = alert_evidence_context(self.conn.cursor(), {
+            "asset_id": self.asset_id,
+            "evidence": {"events": [{"ref": "E1", "source": "telemetry", "record_id": uncertain_id}]},
+        })
+        self.assertEqual(context["uncertain_evidence_refs"], ["E1"])
+        self.assertEqual(context["cited_rows"][0]["quality"], "UNCERTAIN")
+        self.assertEqual(context["cited_rows"][0]["source_liveness"]["state"], "ALIVE")
+        self.assertEqual(context["cited_rows"][0]["series_freshness"]["state"], "STALE")
+        self.assertEqual(context["cited_rows"][0]["provenance"]["source_code"],
+                         self.conn.execute("SELECT source_code FROM data_sources WHERE source_id=%s",
+                                           (self.source_id,)).fetchone()["source_code"])
 
         event_type_id = self.conn.execute("SELECT event_type_id FROM event_types WHERE name='camera_offline'").fetchone()["event_type_id"]
         cctv_id = self.conn.execute("SELECT system_type_id FROM system_types WHERE code='CCTV'").fetchone()["system_type_id"]
