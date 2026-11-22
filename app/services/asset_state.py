@@ -62,7 +62,7 @@ class _ConnectionExecuteAdapter:
 def _dashboard_window(conn: Any) -> tuple[datetime, datetime]:
     row = _execute(conn,
         """SELECT max(ts) AS last FROM (
-                 SELECT max(ts) AS ts FROM telemetry_records
+                 SELECT max(ts) AS ts FROM v_telemetry_valid
                  UNION ALL SELECT max(ts) AS ts FROM event_records
              ) observed"""
     ).fetchone()
@@ -257,3 +257,114 @@ def run_once(conn: Any, evaluated_at: datetime) -> dict[str, int]:
     LOGGER.info(json.dumps({"event": "ASSET_STATE_PASS", "evaluated_at": instant.isoformat(), **counts},
                            separators=(",", ":")))
     return counts
+
+
+def alert_evidence_context(cur: Any, alert: dict[str, Any]) -> dict[str, Any] | None:
+    """Build a private, reference-linked data-path context for one alert explanation."""
+    cur.execute("SELECT to_regclass('public.asset_state_current') AS table_name")
+    if cur.fetchone()["table_name"] is None:
+        return None
+    cur.execute(
+        """SELECT operational_state,availability,communication_status,evaluated_at,
+                  state_since,reason_code,evidence_summary
+             FROM asset_state_current WHERE asset_id=%s""",
+        (alert["asset_id"],),
+    )
+    snapshot = cur.fetchone()
+    if snapshot is None:
+        return None
+    summary = snapshot["evidence_summary"] or {}
+    source_rows = summary.get("sources") or []
+    sources = {row["source_id"]: row for row in source_rows}
+    cited = alert.get("evidence", {}).get("events", [])
+    telemetry_ids = [item.get("record_id", item.get("telemetry_id")) for item in cited
+                     if item.get("source") == "telemetry"]
+    event_ids = [item.get("record_id", item.get("event_id")) for item in cited
+                 if item.get("source") == "event"]
+    records: dict[tuple[str, int], dict[str, Any]] = {}
+    if telemetry_ids:
+        cur.execute(
+            """SELECT t.telemetry_id AS record_id,t.source_id,t.ts,t.received_at,t.quality,
+                      m.name AS series_code
+                 FROM v_telemetry_valid t JOIN metric_types m USING (metric_id)
+                WHERE t.telemetry_id=ANY(%s)""",
+            (telemetry_ids,),
+        )
+        records.update({("telemetry", row["record_id"]): dict(row) for row in cur.fetchall()})
+    if event_ids:
+        cur.execute(
+            """SELECT e.event_id AS record_id,e.source_id,e.ts,e.received_at,
+                      et.name AS series_code
+                 FROM event_records e JOIN event_types et USING (event_type_id)
+                WHERE e.event_id=ANY(%s)""",
+            (event_ids,),
+        )
+        records.update({("event", row["record_id"]): dict(row) for row in cur.fetchall()})
+
+    rows = []
+    uncertain_refs = []
+    all_series = summary.get("series") or []
+    for item in cited:
+        kind = item.get("source")
+        record_id = item.get("record_id", item.get("telemetry_id", item.get("event_id")))
+        raw = records.get((kind, record_id))
+        if raw is None:
+            continue
+        source = sources.get(raw.get("source_id"), {})
+        freshness = next((series for series in all_series
+                          if series.get("source_id") == raw.get("source_id")
+                          and series.get("record_kind") == kind
+                          and ((kind == "telemetry" and series.get("metric_code") == raw.get("series_code"))
+                               or (kind == "event" and series.get("event_type") == raw.get("series_code")))), None)
+        row = {
+            "ref": item.get("ref"),
+            "provenance": {
+                "source_code": source.get("source_code"),
+                "observed_at_utc": raw.get("ts"),
+                "received_at_utc": raw.get("received_at"),
+            },
+            "quality": raw.get("quality") if kind == "telemetry" else None,
+            "series_freshness": None if freshness is None else {
+                "state": freshness.get("freshness"),
+                "age_seconds": freshness.get("age_seconds"),
+                "expected_interval_seconds": freshness.get("expected_interval_seconds"),
+                "evaluated_at_utc": freshness.get("evaluated_at"),
+            },
+            "source_liveness": {
+                "state": source.get("liveness"),
+                "last_received_at_utc": source.get("last_received_at"),
+                "evaluated_at_utc": source.get("liveness_evaluated_at"),
+            } if source else None,
+        }
+        rows.append(row)
+        if kind == "telemetry" and raw.get("quality") == "UNCERTAIN" and row["ref"]:
+            uncertain_refs.append(row["ref"])
+
+    return {
+        "schema_version": EVIDENCE_SCHEMA_VERSION,
+        "state_snapshot": {
+            "operational_state": snapshot["operational_state"],
+            "availability": snapshot["availability"],
+            "communication_status": snapshot["communication_status"],
+            "evaluated_at_utc": snapshot["evaluated_at"],
+            "state_since_utc": snapshot["state_since"],
+            "reason_code": snapshot["reason_code"],
+        },
+        "series_freshness": [
+            {"record_kind": row.get("record_kind"), "metric_code": row.get("metric_code"),
+             "event_type": row.get("event_type"), "state": row.get("freshness"),
+             "last_observed_at_utc": row.get("last_observed_at"),
+             "age_seconds": row.get("age_seconds"),
+             "expected_interval_seconds": row.get("expected_interval_seconds"),
+             "evaluated_at_utc": row.get("evaluated_at")}
+            for row in (summary.get("series") or [])
+        ],
+        "source_liveness": [
+            {"source_code": row.get("source_code"), "state": row.get("liveness"),
+             "last_received_at_utc": row.get("last_received_at"),
+             "evaluated_at_utc": row.get("liveness_evaluated_at")}
+            for row in source_rows
+        ],
+        "cited_rows": rows,
+        "uncertain_evidence_refs": uncertain_refs,
+    }

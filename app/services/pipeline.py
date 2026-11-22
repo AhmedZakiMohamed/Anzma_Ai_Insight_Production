@@ -12,6 +12,7 @@ from app.domain.evidence import evidence
 from app.domain.incidents import incident_engine as inc
 from app.domain.evidence import validation as val
 from app.domain.ai.model_provider import ModelProvider
+from app.services.asset_state import alert_evidence_context
 
 
 @da.guard
@@ -44,6 +45,7 @@ def explain_alert(cur, alert_id, use_llm=True, persist=True, provider: ModelProv
         raise LookupError(f"alert {alert_id} not found")
     asset = da.get_asset(cur, alert["asset_id"])
     verification = evidence.alert_evidence(cur, alert_id)
+    alert["_g3_evidence"] = alert_evidence_context(cur, alert)
     response = val.explain_alert(alert, asset, use_llm=use_llm, verification=verification,
                                  as_of=da.latest_ts(cur), provider=provider)
     if persist:

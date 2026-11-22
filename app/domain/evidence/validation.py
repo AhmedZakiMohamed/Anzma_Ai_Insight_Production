@@ -62,6 +62,17 @@ def assess_evidence(evidence, causes_supported=True):
     return level, limitations
 
 
+def assess_cited_uncertainty(alert, explanation_text):
+    """Lower sufficiency only when final-text citations point at UNCERTAIN measurements."""
+    data_path = alert.get("_g3_evidence") or {}
+    cited, _malformed = grounding.parse_citations(explanation_text or "")
+    dependencies = sorted(set(cited) & set(data_path.get("uncertain_evidence_refs") or []))
+    if not dependencies:
+        return None, None
+    refs = ", ".join(f"[{ref}]" for ref in dependencies)
+    return PARTIAL, f"Cited measurement evidence {refs} has quality UNCERTAIN; its reading is provisional."
+
+
 def validate_explanation(alert, asset, explanation, attempts=1):
     """Re-check a finished explanation against stored evidence. Returns the contract's `validation` object."""
     pkg = grounding.build_package(alert, asset)
@@ -178,6 +189,11 @@ def explain_alert(alert, asset, use_llm=True, verification=None, as_of=None,
         answer = alert.get("summary", "")
     else:
         answer = explanation["summary"]
+
+    cited_sufficiency, cited_limitation = assess_cited_uncertainty(alert, answer)
+    if cited_sufficiency == PARTIAL:
+        sufficiency = PARTIAL
+        limitations.append(cited_limitation)
 
     evidence = verification["events"] if verification is not None else (alert.get("evidence") or {}).get("events", [])
     return standard_response(

@@ -1,6 +1,6 @@
 """Pure evidence packaging and grounding checks for alert explanations."""
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 import app.domain.alerts.alert_config as cfg
 
@@ -41,7 +41,7 @@ def build_package(alert, asset):
         events.append({"ref": event["ref"], "time_utc": parse_ts(event["ts"]).strftime("%H:%M"),
                        "event_type": event["event_type"], "value": event["value"], "unit": event["unit"],
                        "details": event["details"]})
-    return {
+    package = {
         "alert": {"rule": rule["title"], "severity": alert["severity"],
                   "method": alert["detection_method"], "asset": asset["name"],
                   "system": asset["system_type"], "zone": asset["zone"],
@@ -50,6 +50,24 @@ def build_package(alert, asset):
         "thresholds": ev["thresholds"], "facts": ev["facts"],
         "event_count": ev["event_count"], "events": events,
     }
+    data_path = alert.get("_g3_evidence")
+    if data_path:
+        package["data_path"] = _data_path_json(data_path)
+    return package
+
+
+def _data_path_json(value):
+    """Keep private G3 timestamps JSON-safe and canonical UTC for model grounding."""
+    if isinstance(value, datetime):
+        moment = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return moment.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    if isinstance(value, dict):
+        return {str(key): _data_path_json(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_data_path_json(item) for item in value]
+    if isinstance(value, (int, float, str, bool)) or value is None:
+        return value
+    return str(value)
 
 
 def allowed_values(pkg):
@@ -67,6 +85,13 @@ def allowed_values(pkg):
                 date, time = value.split(" ")
                 dates.add(date)
                 times.add(time)
+            elif key.endswith("_at_utc"):
+                try:
+                    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                    dates.add(parsed.strftime("%Y-%m-%d"))
+                    times.add(parsed.strftime("%H:%M"))
+                except ValueError:
+                    nums.extend(float(n) for n in NUM_ANY.findall(value))
             elif key != "ref":
                 nums.extend(float(n) for n in NUM_ANY.findall(value))
         elif isinstance(value, dict):
