@@ -1,5 +1,5 @@
 -- verify_schema.sql -- READ-ONLY catalog check of a live database against the authoritative schema
--- (base schema -> 003 -> 004 -> 005 -> 006 -> 007 -> 008 -> 009 -> 010 -> 011; see DATABASE_BASELINE.md). Changes nothing: SELECT only.
+-- (base schema -> 003 -> 004 -> 005 -> 006 -> 007 -> 008 -> 009 -> 010 -> 011 -> 012; see DATABASE_BASELINE.md). Changes nothing: SELECT only.
 -- Run:  psql -U anzma -d <db> -f verify_schema.sql        (every row must show status = OK)
 -- Exit status of psql is not affected by a failed check; read the status column (final row = overall verdict).
 WITH expected_tables(name) AS (VALUES
@@ -8,7 +8,7 @@ WITH expected_tables(name) AS (VALUES
   ('alerts'),('incidents'),('scenario_runs'),('schema_migrations'),('data_sources'),('source_credentials'),
   ('asset_external_ids'),('ingestion_batches'),('ingestion_rejections'),('equipment_state_records'),
   ('reporting_expectations'),('data_gaps'),('series_freshness_current'),('source_liveness_current'),
-  ('source_liveness_transitions'),('data_gap_cause_history')),
+  ('source_liveness_transitions'),('data_gap_cause_history'),('asset_state_current'),('asset_state_history')),
 expected_views(name) AS (VALUES
   ('v_data_clock'),('v_asset_overview'),('v_incident_overview'),('v_alert_overview'),('v_camera_status'),
   ('v_telemetry_valid'),('v_asset_current_state'),('v_unmapped_external_assets')),
@@ -25,7 +25,8 @@ expected_indexes(name) AS (VALUES
   ('source_liveness_current_pkey'),('idx_source_liveness_current_state_evaluated'),
   ('source_liveness_transitions_pkey'),('source_liveness_transitions_source_evaluation_key'),
   ('idx_source_liveness_transitions_source_time'),('data_gap_cause_history_pkey'),
-  ('idx_data_gap_cause_history_gap_time')),
+  ('idx_data_gap_cause_history_gap_time'),('asset_state_current_pkey'),('idx_asset_state_current_evaluated'),
+  ('idx_asset_state_current_semantics'),('asset_state_history_pkey'),('idx_asset_state_history_asset_time')),
 expected_columns(tbl, col) AS (VALUES
   ('alerts','incident_id'),('alerts','evidence'),('alerts','resolved_ts'),('alerts','explanation'),
   ('alerts','explanation_source'),('alerts','explained_at'),('incidents','grouping_rule'),
@@ -76,6 +77,19 @@ expected_columns(tbl, col) AS (VALUES
   ('source_liveness_transitions','missing_series_count'),('source_liveness_transitions','mass_stale'),
   ('data_gap_cause_history','cause_history_id'),('data_gap_cause_history','gap_id'),
   ('data_gap_cause_history','old_cause'),('data_gap_cause_history','new_cause'),('data_gap_cause_history','changed_at'),
+  ('asset_state_current','asset_id'),('asset_state_current','operational_state'),
+  ('asset_state_current','availability'),('asset_state_current','communication_status'),
+  ('asset_state_current','evaluated_at'),('asset_state_current','state_since'),
+  ('asset_state_current','reason_code'),('asset_state_current','reason_message'),
+  ('asset_state_current','evidence_summary'),('asset_state_current','evidence_schema_version'),
+  ('asset_state_history','asset_state_history_id'),('asset_state_history','asset_id'),
+  ('asset_state_history','kind'),('asset_state_history','evaluated_at'),
+  ('asset_state_history','from_operational_state'),('asset_state_history','to_operational_state'),
+  ('asset_state_history','from_availability'),('asset_state_history','to_availability'),
+  ('asset_state_history','from_communication_status'),('asset_state_history','to_communication_status'),
+  ('asset_state_history','state_since'),('asset_state_history','reason_code'),
+  ('asset_state_history','reason_message'),('asset_state_history','evidence_summary'),
+  ('asset_state_history','evidence_schema_version'),
   ('source_credentials','credential_id'),('source_credentials','source_id'),('source_credentials','key_prefix'),
   ('source_credentials','key_hash'),('source_credentials','scopes'),('source_credentials','created_at'),
   ('source_credentials','expires_at'),('source_credentials','revoked_at'),('source_credentials','last_used_at'),
@@ -149,7 +163,16 @@ expected_constraints(name) AS (VALUES
   ('source_liveness_transitions_from_state_check'),('source_liveness_transitions_to_state_check'),
   ('source_liveness_transitions_counts_check'),('source_liveness_transitions_source_evaluation_key'),
   ('data_gap_cause_history_gap_id_fkey'),('data_gap_cause_history_old_check'),
-  ('data_gap_cause_history_new_check'),('data_gap_cause_history_change_check')),
+  ('data_gap_cause_history_new_check'),('data_gap_cause_history_change_check'),
+  ('asset_state_current_asset_id_fkey'),('asset_state_current_operational_check'),
+  ('asset_state_current_availability_check'),('asset_state_current_communication_check'),
+  ('asset_state_current_evidence_check'),('asset_state_current_schema_version_check'),
+  ('asset_state_history_asset_id_fkey'),('asset_state_history_kind_check'),
+  ('asset_state_history_from_operational_check'),('asset_state_history_to_operational_check'),
+  ('asset_state_history_from_availability_check'),('asset_state_history_to_availability_check'),
+  ('asset_state_history_from_communication_check'),('asset_state_history_to_communication_check'),
+  ('asset_state_history_evidence_check'),('asset_state_history_schema_version_check'),
+  ('asset_state_history_baseline_check')),
 checks AS (
   SELECT 1 AS n, 'tables missing' AS check_name, '0' AS expected,
          (SELECT count(*) FROM expected_tables e WHERE NOT EXISTS
@@ -215,6 +238,13 @@ checks AS (
               AND r.relname='data_gaps' AND t.tgname='trg_data_gap_cause_history' AND NOT t.tgisinternal)
           + (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
               WHERE n.nspname='public' AND p.proname='audit_data_gap_cause_change'))::text
+  UNION ALL SELECT 20, 'G3 immutable asset-state history trigger/function and migration ledger installed', '3',
+         ((SELECT count(*) FROM pg_trigger t JOIN pg_class r ON r.oid=t.tgrelid
+            JOIN pg_namespace n ON n.oid=r.relnamespace WHERE n.nspname='public'
+              AND r.relname='asset_state_history' AND t.tgname='trg_asset_state_history_immutable' AND NOT t.tgisinternal)
+          + (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+              WHERE n.nspname='public' AND p.proname='reject_asset_state_history_mutation')
+          + (SELECT count(*) FROM schema_migrations WHERE version='012_asset_state_shadow'))::text
 )
 SELECT n, check_name, expected, actual,
        CASE WHEN expected LIKE '>=%' THEN CASE WHEN actual::int >= substr(expected,3)::int THEN 'OK' ELSE 'FAIL' END
