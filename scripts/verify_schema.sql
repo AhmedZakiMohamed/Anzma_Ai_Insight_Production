@@ -1,5 +1,5 @@
 -- verify_schema.sql -- READ-ONLY catalog check of a live database against the authoritative schema
--- (base schema -> 003 -> 004 -> 005 -> 006 -> 007 -> 008 -> 009 -> 010 -> 011 -> 012; see DATABASE_BASELINE.md). Changes nothing: SELECT only.
+-- (base schema -> 003 -> 004 -> 005 -> 006 -> 007 -> 008 -> 009 -> 010 -> 011 -> 012 -> 013; see DATABASE_BASELINE.md). Changes nothing: SELECT only.
 -- Run:  psql -U anzma -d <db> -f verify_schema.sql        (every row must show status = OK)
 -- Exit status of psql is not affected by a failed check; read the status column (final row = overall verdict).
 WITH expected_tables(name) AS (VALUES
@@ -26,7 +26,8 @@ expected_indexes(name) AS (VALUES
   ('source_liveness_transitions_pkey'),('source_liveness_transitions_source_evaluation_key'),
   ('idx_source_liveness_transitions_source_time'),('data_gap_cause_history_pkey'),
   ('idx_data_gap_cause_history_gap_time'),('asset_state_current_pkey'),('idx_asset_state_current_evaluated'),
-  ('idx_asset_state_current_semantics'),('asset_state_history_pkey'),('idx_asset_state_history_asset_time')),
+  ('idx_asset_state_current_semantics'),('asset_state_history_pkey'),('idx_asset_state_history_asset_time'),
+  ('uq_buildings_building_code_all')),
 expected_columns(tbl, col) AS (VALUES
   ('alerts','incident_id'),('alerts','evidence'),('alerts','resolved_ts'),('alerts','explanation'),
   ('alerts','explanation_source'),('alerts','explained_at'),('incidents','grouping_rule'),
@@ -245,6 +246,10 @@ checks AS (
           + (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
               WHERE n.nspname='public' AND p.proname='reject_asset_state_history_mutation')
           + (SELECT count(*) FROM schema_migrations WHERE version='012_asset_state_shadow'))::text
+  UNION ALL SELECT 21, 'building_code is NOT NULL and migration 013 is recorded', '2',
+         ((SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='buildings'
+             AND column_name='building_code' AND is_nullable='NO')
+          + (SELECT count(*) FROM schema_migrations WHERE version='013_building_code_required'))::text
 )
 SELECT n, check_name, expected, actual,
        CASE WHEN expected LIKE '>=%' THEN CASE WHEN actual::int >= substr(expected,3)::int THEN 'OK' ELSE 'FAIL' END
