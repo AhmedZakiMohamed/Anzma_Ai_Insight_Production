@@ -36,6 +36,7 @@ class EmptyCursor:
 class EmptyConnection:
     def __init__(self):
         self.commits = 0
+        self.rollbacks = 0
         self.closed = False
 
     def cursor(self):
@@ -45,7 +46,7 @@ class EmptyConnection:
         self.commits += 1
 
     def rollback(self):
-        raise AssertionError("unexpected rollback")
+        self.rollbacks += 1
 
     def close(self):
         self.closed = True
@@ -186,6 +187,30 @@ class FreshnessJobTests(unittest.TestCase):
         self.assertEqual(summary["event"], "FRESHNESS_PASS")
         self.assertEqual(summary["series_evaluated"], 0)
         self.assertEqual(summary["states"]["NOT_APPLICABLE"], 0)
+
+    def test_asset_state_failure_does_not_fail_freshness_pass(self):
+        conn = EmptyConnection()
+        now = datetime(2026, 11, 22, 12, 0, tzinfo=timezone.utc)
+        freshness_result = {
+            "evaluated_at": now, "series_evaluated": 2,
+            "states": {"FRESH": 2, "STALE": 0, "MISSING": 0, "UNKNOWN": 0,
+                       "NOT_APPLICABLE": 0},
+            "gaps_opened": 0, "gaps_closed": 0, "sources_evaluated": 0,
+            "source_states": {"ALIVE": 0, "SILENT": 0, "UNKNOWN": 0, "DISABLED": 0},
+            "gaps_reclassified": 0, "pages_committed": 1,
+        }
+        with patch.object(freshness_job, "run_once", return_value=freshness_result), \
+             patch.object(freshness_job.asset_state_service, "run_once",
+                          side_effect=RuntimeError("shadow store unavailable")), \
+             self.assertLogs(freshness_job.LOGGER, level=logging.ERROR) as logs:
+            summary = freshness_job.run_pass(conn, clock=lambda: now)
+        self.assertEqual(summary["event"], "FRESHNESS_PASS")
+        self.assertEqual(summary["series_evaluated"], 2)
+        self.assertEqual(conn.rollbacks, 1)
+        failure_json = logs.output[0].split(":", 2)[-1]
+        failure = json.loads(failure_json)
+        self.assertEqual(failure["event"], "ASSET_STATE_PASS_FAILED")
+        self.assertIn("shadow store unavailable", failure["error"])
 
 
 if __name__ == "__main__":
