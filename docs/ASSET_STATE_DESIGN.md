@@ -1,77 +1,65 @@
-# G3 design: Core-derived asset state
+# G3: Core-derived asset state
 
-**Phase 1 item:** 1.4, G3
+**Phase 1 item:** 1.4
+**Status:** APPROVED; shadow implementation complete.
+**Decision recorded:** 2026-11-22.
+**Approver:** project owner (name not recorded).
 
-**Status:** proposal for human review; no schema, code, or response changes are authorized by this note.
-**Decision: PENDING — approval is required before implementation.**
+## Current behavior verified in the repository
 
-## 1. Verified current behavior
+- Connector-reported equipment state is stored as evidence in `equipment_state_records`; `v_asset_current_state` is a latest-report view, not Core-derived health (`db/migrations/006_ingestion_foundation.sql`).
+- The dashboard's operational bucket remains computed by `app/repositories/dashboard_core_pg.py::asset_status_rows` using its existing alert/event/data-window rules. G3 reads that result; it does not replace dashboard, alert, incident, or chat readers.
+- Freshness and gaps are persisted by `app/services/freshness.py`; source liveness is persisted by the same job. Contract §9 keeps source liveness and gap causes evidence-only. `v_telemetry_valid` excludes `BAD`, while `UNCERTAIN` and legacy `NULL` quality remain visible for compatibility.
 
-- `equipment_state_records` stores source-reported `reported_state` (`RUNNING`, `STOPPED`, `STANDBY`, `FAULT`, `UNKNOWN`) and `availability` (`AVAILABLE`, `UNAVAILABLE`, `UNKNOWN`) as append-only evidence, along with source, asset, observed/received timestamps, reason, message, batch and metadata. Its natural uniqueness is `(source_id, asset_id, observed_at)`. See `db/migrations/006_ingestion_foundation.sql:140-159`.
-- `v_asset_current_state` selects the latest connector report by `observed_at`, then `state_id`; it is not a Core-derived health view. See `db/migrations/006_ingestion_foundation.sql:161-165`.
-- `v_telemetry_valid` excludes `BAD` only. Thus `UNCERTAIN` and legacy `NULL` quality rows are included by this compatibility view. See `db/migrations/006_ingestion_foundation.sql:167-168` and contract §7.
-- The E3 job persists series freshness in `series_freshness_current`; E4a persists missing-series gaps; E4b persists `source_liveness_current`, transitions and gap-cause audit. Their current semantics are distinct: freshness is per expected series; source liveness and gap cause are evidence only; they do not change asset health or create alerts. See migrations 009-011 and contract §9.
-- Existing dashboard health is computed by `app/repositories/dashboard_core_pg.py::_asset_status_counts` (around lines 437-454 onward). It gives priority to active critical/warning fault evidence and alerts, then `no_data`, `unknown`, and `normal`; resolved alert lifecycle affects fault interpretation. This query is an existing compatibility surface.
-- Alert input is assembled by `app/adapters/database/db_adapter.py::load_context` (around lines 100-154). Events include event source rows; telemetry selects value and timestamp through `v_telemetry_valid` but does not select its `quality` or `source_id`. `app/domain/alerts/alert_engine.py::make_alert` (around lines 169-183) stores thresholds, facts and selected event evidence. The event evidence formatter includes a hard reference to an event or telemetry source row (`evidence_event`, around lines 134-141).
-- `app/domain/evidence/validation.py::assess_evidence` (around lines 46-59) grades evidence presence and supported causes, and the response includes `data_sufficiency`, `validation`, and `limitations` (around lines 83-93). `freshness_limitation` currently describes the latest stored record time (around lines 102-107). Grounding validation checks supported facts/recommendations/references; it does not establish that evidence is complete or that an equipment state is semantically true.
-- Current contract §9 defines series freshness (`FRESH`/`STALE`/`MISSING`/`UNKNOWN` and event-only `NOT_APPLICABLE`) and E4b source liveness (`ALIVE`/`SILENT`/`UNKNOWN`/`DISABLED`). It explicitly states that source liveness and gap causes are evidence only and never change asset health, create `OFFLINE`/`UNAVAILABLE`, or generate alerts. Contract §7 defines `UNCERTAIN` as valid and included by default, with uncertainty marked in evidence; `BAD` is excluded from operational reads.
+## Approved decisions and implemented mapping
 
-## 2. Proposed state model (not implemented)
+The evaluator is a shadow projection. It runs after freshness under the freshness job's process-wide advisory lock, then uses its own database transaction and a separate state-stage lock. A state-stage failure rolls back only that stage; the last committed state snapshot remains, freshness stays committed, and the job emits `ASSET_STATE_PASS_FAILED`. It never writes a default healthy or offline state.
 
-Keep four concepts separate: (1) raw facts, (2) per-series freshness, (3) per-source liveness, and (4) an asset-level Core projection. Do not turn absence into an equipment fault.
+| Existing dashboard bucket | `operational_state` | `availability` | `communication_status` |
+|---|---|---|---|
+| `critical` | `CRITICAL` | Latest applicable Core event evidence (`camera_offline`/`link_down` → `UNAVAILABLE`; `camera_online`/`link_up` → `AVAILABLE`); otherwise `UNKNOWN` | Derived independently from per-series freshness and source attribution below |
+| `warning` | `WARNING` | Same Core-event rule | Same freshness rule |
+| `normal` | `NORMAL` | Same Core-event rule | Same freshness rule |
+| `no_data` | `UNKNOWN` | Same Core-event rule | Same freshness rule |
+| `unknown` or unrecognized | `UNKNOWN` | Same Core-event rule | Same freshness rule |
 
-| Proposed object | Grain and purpose | Proposed constraints / lifecycle |
-|---|---|---|
-| `asset_state_current` | One current projection per asset: `operational_state`, `availability`, `communication_status`, `evaluated_at`, `state_since`, reason/evidence references, and a compact evidence/sufficiency summary. Per-series freshness remains in `series_freshness_current`; do not collapse all series into one freshness value without an approved rule. | `asset_id` primary key/FK; enumerated values; timestamps UTC; upsert in the evaluator transaction. Keep connector `reported_state` in its fact table, not as the authoritative value here. |
-| `asset_state_history` | Append-only transitions of the approved asset-level semantic tuple, with old/new values, UTC `evaluated_at`, causal event/fact reference where known, and source/freshness evidence references. | FK references use restrictive deletion. Write only when an approved semantic value changes; a repeated evaluation must not add duplicate transitions. A DB trigger/constraint should reject edits/deletes after insertion. |
+For communication status, an asset attributed to multiple sources, or a mixture of sourced and unattributed series, is `UNKNOWN` with the source evidence retained. For an unambiguous single source: any `MISSING` series yields `SILENT`; otherwise any `STALE` series yields `DEGRADED`; all `FRESH` series yield `COMMUNICATING`; no usable freshness evidence yields `UNKNOWN`. `NOT_APPLICABLE` rows do not determine the result. Source liveness (`ALIVE`/`SILENT`) and each series freshness remain separate in the evidence summary. Communication is never labelled `OFFLINE` or `UNAVAILABLE`.
 
-**Additive migration proposal:** next migration is `012_asset_state.sql`, subject to migration-runner review and human approval. It would create only new tables/indexes/constraints and record the migration in the existing ledger. No committed migration is edited; no existing fact row is updated or deleted. Do not backfill fabricated history. The first successful evaluator pass may create a current snapshot from available evidence; whether to create an initial history row is a decision below. Existing rows with NULL provenance or quality remain unchanged.
+Connector-reported `availability` is evidence only and never sets Core availability. Core availability uses the existing Core event evidence. Silence, gap cause, stale/missing freshness, and connector status never change operational health or create alerts.
 
-## 3. Proposed derivation rules and precedence
+The first successful evaluation writes one `BASELINE` history row at its actual UTC evaluation time. Later history rows are appended only when the semantic tuple `(operational_state, availability, communication_status)` changes. Freshness-only changes update the current evidence summary but do not add history transitions. `state_since` changes only with that semantic tuple.
 
-These are proposals requiring approval. Current `CANONICAL_DATA_MODEL.md` §8 already contains a proposed four-dimension model, but its text is older than the approved E4b contract rules and includes status wording that needs reconciliation (see decisions below).
+`UNCERTAIN` is included as valid evidence and marked in the private data-path context. It lowers `data_sufficiency` to `partial` only when a citation in the final explanation intersects the reference of an `UNCERTAIN` telemetry measurement. It does not downgrade grounding validation by itself. `BAD` is excluded through `v_telemetry_valid`; legacy `NULL` quality/provenance is disclosed and never backfilled.
 
-| Dimension | Candidate rule | Guardrail |
-|---|---|---|
-| `operational_state` | Reuse the currently implemented Core fault/alert lifecycle logic: unresolved opener/recovery event pairs and active alerts determine `CRITICAL`/`WARNING`; otherwise `NORMAL` when sufficient evidence exists, else `UNKNOWN`. The current pair list is `FAULT_RECOVERY_PAIRS` in `app/repositories/dashboard_core_pg.py`; the current query also considers unpaired event severity and resolved alert spans. | Connector `reported_state` never directly assigns or overrides this Core dimension. Silence, source `SILENT`, gap cause, `STALE`, and `MISSING` never create an operational fault or `OFFLINE`. Exact event-to-state precedence and treatment of conflicting active alerts need approval and parity tests. |
-| `availability` | Derive from explicit Core event evidence and, only if approved, validated connector availability reports. | Never infer `UNAVAILABLE` from missing telemetry, source silence, a gap, or a missing state report. Decide whether and how `equipment_state_records.availability` is trusted, reconciled, and superseded by Core events. |
-| `communication_status` | A separate data-path projection informed by per-series freshness and source liveness, without changing operational state or availability. Preserve source liveness values as their own diagnostic dimension. | Do not use older `LOST` wording until reconciled with E4b’s `SILENT` state. No communication label may be rendered as equipment `OFFLINE` or `UNAVAILABLE`. Exact multi-source aggregation needs approval. |
-| `UNKNOWN` / evidence sufficiency | Distinguish “no known operational facts” from an observed normal state. Missing source/asset mapping or legacy NULL provenance makes attribution incomplete, not proof of a fault. | Existing dashboard bucket parity must be measured before replacing any current counts. |
+## Storage and migration
 
-**Quality and provenance:** carry `quality`, `source_id`, observation time, receive time and source-row reference into alert evidence when available. `UNCERTAIN` records remain eligible under §7 but are visibly marked and may lower evidence sufficiency; they must not be silently treated as `GOOD`. `BAD` remains excluded through `v_telemetry_valid`. A NULL legacy quality remains unknown in storage; do not backfill it to `GOOD`. Source liveness (`last_received_at`) remains separate from measurement success (`last_success_at` / error evidence), as contract §9 specifies.
+Migration `012_asset_state_shadow.sql` is additive and idempotent. It creates `asset_state_current` and append-only `asset_state_history`, with restrictive asset foreign keys, semantic checks, indexes, JSONB `evidence_summary`, and `evidence_schema_version`. A trigger rejects history `UPDATE` and `DELETE`. It records `012_asset_state_shadow` in `schema_migrations`; no old fact or historical row is rewritten. `scripts/verify_schema.sql` checks every G3 table, column, index, trigger, function, and ledger entry.
 
-**Freshness and gaps:** retain the full per-series snapshot and gap state as evidence. One stale or missing metric does not by itself set asset operational state to warning/critical or availability unavailable. Whether it changes the asset-level communication projection, and how multiple sources serving one asset are aggregated, are human decisions. A gap cause (`UNKNOWN`, `NO_DATA`, `SOURCE_SUSPECTED`) is explanatory evidence only.
+For an already-running database, after reviewing and verifying a backup, the operator applies pending migrations through the existing runner from the intended Compose project:
 
-**Evaluation proposal:** extend the existing freshness evaluator/job pattern after the freshness/source/gap snapshot is computed, using one UTC evaluation timestamp and a consistent DB transaction for each asset-state snapshot. Locking, retries and idempotency should follow G2’s single-instance job pattern. History is written only for semantic transitions, not every periodic timestamp refresh. Job failure must leave the last committed current snapshot intact and emit an operational error; it must not manufacture a default healthy or offline state.
+```sh
+docker compose --env-file .env -p "$PROJECT" -f deploy/compose/docker-compose.yml exec -T api python scripts/apply_migrations.py
+```
 
-## 4. Alert and AI evidence (proposed, no output change approved)
+Set `PROJECT` to the intended database's Compose project. Fresh-volume Compose initialization is separate; it does not apply migrations to an existing volume. The migration was applied and verified only in the disposable project `anzma-taska-current-20261122` for this work.
 
-- Enrich internal alert evidence with the current state snapshot, relevant freshness rows, source liveness evidence, `UNCERTAIN` flags, data age, provenance references, and a clear indication when values are legacy/unattributed. Keep the existing raw event/telemetry references and alert facts.
-- Add a data-sufficiency assessment separate from grounding validation. Example limitation categories to decide: no current freshness snapshot, stale snapshot, missing expected series, source unknown/silent, uncertain-only measurements, truncated evidence, and legacy rows without source/received metadata. Do not claim “complete” merely because grounding checks passed.
-- AI explanations should state material evidence limitations in the returned limitation text when relevant, and must not infer a fault from silence or report a connector-reported state as Core-validated health. The AI fallback and grounding-validation contract remain intact.
-- Do not change `/alerts`, chat, or explanation response shapes in this design phase. Adding fields to alert evidence or API responses is a contract/interface change and needs explicit approval plus contract documentation before implementation. Recommendation: initially add an optional versioned internal evidence object, prove existing response parity, then propose any public exposure separately.
+## Internal evidence and compatibility
 
-## 5. Compatibility and parity
+`pipeline.explain_alert` attaches a private, versioned `_g3_evidence` object assembled from the current shadow snapshot and citation-linked fact rows. It includes state, relevant freshness, source liveness, quality, provenance, and legacy/unattributed markers. Grounding recognizes the new evidence values; unsupported numeric claims remain rejected. This object is not added to a public API response.
 
-Keep existing dashboard status counts, alert detections, incidents, and response shapes unchanged in the first implementation. Run the existing seeded-data KPI/alert/incident checks before and after on a disposable DB and compare canonical outputs. If the proposed projection disagrees with existing behavior, report the exact rows/rules and stop for a decision; do not silently alter legacy semantics. A later approved migration of consumers should be a separate step.
+Canonical sorted-JSON SHA-256 comparison used the same seeded DB and same request against source at `1737e06` and the G3 working code. Both sides returned HTTP 200 and identical hashes:
 
-## 6. Safe implementation outline
+| Surface | SHA-256 | Canonical bytes |
+|---|---|---:|
+| `GET /dashboard/overview` | `81ba2aa60141a2191ddd61f8d9663b6a7ad1ecf01108c31af856ec2153ab4dce` | 4383 |
+| `GET /alerts` | `62c28825cda4c9a89fb213f195c45554febf608e4f348c862137346034de392b` | 4671 |
+| `GET /incidents` | `f322be7f98021b9dea5f3a58ed8d2b5c5134df96656511cc1f49ffa04da2dcf9` | 2724 |
+| `POST /chat` (`What is the current building status?`, 24 h, deterministic) | `a710019ba566f92cbf78abc7b81257db69a07e123c8c3c79df8fb395022a8334` | 2137 |
 
-1. After approval, implement migration 012 additively and extend `scripts/verify_schema.sql` for every new object.
-2. Add a pure derivation function with injected evaluation time and explicit evidence inputs; unit-test precedence and “silence never offline/unavailable.”
-3. Add an idempotent persistence/evaluator path and disposable-DB tests for current-state upsert, transition-only history, replay, concurrent/repeated passes, NULL legacy provenance/quality, `UNCERTAIN`, and `BAD` exclusion.
-4. Only after those checks, enrich alert evidence internally and update AI limitation wording. Any externally visible shape change gets a separate contract/design approval.
+Parity command `python scripts/state_parity_report.py --db anzma` reported 12 seeded assets and 0 mismatches. `python scripts/state_parity_report.py --db anzma_g3_parity --scenarios` reported those 12 plus `fault_open`, `fault_recovered`, `resolved_alert`, `stale_series`, `silent_source`, `uncertain_only`, and `null_legacy_quality`, with 0 mismatches. Synthetic rows were rolled back to savepoints. The parity tool is CLI-only.
 
-No migration, implementation, disposable DB, API change, or test suite was run for this proposal. All proposed schema and behavior above are **NOT TESTED**.
+## Verification and limitations
 
-## 7. Decisions needed from the human
+On the disposable PostgreSQL 16 project, G3 integration tests passed 6/6 twice; the grounding unit tests passed 3/3; full unit suite passed 83 tests (1 skipped); the migration runner skipped 006–012 on two repeated runs because they were already recorded; `verify_schema.sql` returned `OVERALL OK`. Other Phase 0/AI regression results are recorded in `docs/PHASE1_STATUS.md`.
 
-1. **Approve this design to proceed with migration 012 and implementation?** Recommendation: approve only the additive state tables and shadow evaluator first; keep existing readers authoritative until parity evidence is reviewed.
-2. **Operational-state semantics:** approve reuse of the current alert/event pairing and severity behavior, including the exact reset/recovery and conflict precedence? Recommendation: preserve current health behavior byte-for-byte initially and expose the projection in shadow mode.
-3. **Availability evidence:** may a connector’s explicit `availability` field ever set Core `UNAVAILABLE`, and how does it interact with Core event evidence? Recommendation: retain it as evidence only until trust/precedence rules are explicit; only existing Core events drive current availability.
-4. **Communication labels:** how should `ALIVE`/`SILENT` and series `FRESH`/`STALE`/`MISSING` map to an asset-level communication status, especially across multiple sources? Recommendation: keep source and series values independently visible; use `UNKNOWN` where aggregation is ambiguous; do not use `LOST` until canonical wording is reconciled.
-5. **History:** should the first evaluator pass create a baseline history row, and should freshness-only changes append history? Recommendation: baseline current row without historical transition; append only semantic asset-level tuple changes and keep per-series freshness in its own table.
-6. **UNCERTAIN sufficiency:** should any `UNCERTAIN` supporting measurement force `PARTIAL`, or only be disclosed as a limitation? Recommendation: disclose it and mark evidence; only lower sufficiency when the explanation depends on it, with deterministic tests.
-7. **Output surface:** which API/chat/alert consumers may receive the new state and evidence fields? Recommendation: no public response change in initial G3; seek separate approval after shadow results.
-
-**Decision: PENDING.**
+The projection is not an operational authority and has no public API/dashboard reader. It covers the existing dashboard bucket mapping, not an independently redesigned fault model. Legacy NULL provenance remains ambiguous. `asset_state_history` grows without bound until G5 defines and approves a retention policy; no history deletion is authorized by G3. These limitations must remain in the Phase 1 limitations list.

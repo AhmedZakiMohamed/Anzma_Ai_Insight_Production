@@ -211,34 +211,34 @@ Four *independent* dimensions plus lifecycle. All are about the **equipment/data
 | Dimension | Values | Derived from |
 |---|---|---|
 | `operational_state` | `NORMAL \| WARNING \| CRITICAL \| UNKNOWN` | Open fault conditions and event severities. Reuses the existing rule: critical = latest event of an opener/closer pair is the opener with severity critical, or an unpaired critical event in the window; warning = warning event(s) in the window; `UNKNOWN` = asset has never produced any telemetry/event. |
-| `availability` | `AVAILABLE \| UNAVAILABLE \| UNKNOWN` | **Explicit evidence only**: an open availability opener (`camera_offline`, `link_down`) or a connector state report. Silence never sets `UNAVAILABLE`. |
-| `communication_status` | `COMMUNICATING \| DEGRADED \| LOST \| UNKNOWN` | The *data path*: from freshness (§9) and the status of the asset’s `data_sources` row. `LOST` means the Core has stopped hearing from the device/source, **not** that the equipment is off. |
+| `availability` | `AVAILABLE \| UNAVAILABLE \| UNKNOWN` | **Core event evidence only** in the G3 shadow projection (`camera_offline`/`link_down` and their recovery events). Connector-reported availability remains evidence and never sets Core availability. Silence never sets `UNAVAILABLE`. |
+| `communication_status` | `COMMUNICATING \| DEGRADED \| SILENT \| UNKNOWN` | The *data path*, derived from per-series freshness for an unambiguous single-source asset; multiple sources or mixed sourced/unattributed series produce `UNKNOWN`. Source liveness (`ALIVE`/`SILENT`) remains separately visible. Silence is evidence and never means equipment `OFFLINE`/`UNAVAILABLE`. |
 | `freshness` | `FRESH \| STALE \| MISSING \| NOT_APPLICABLE` | Age of last observation vs expected interval (§9). |
 | `lifecycle_status` (on `assets`) | `PLANNED \| ACTIVE \| MAINTENANCE \| DECOMMISSIONED` | Provisioning; assets not `ACTIVE` are excluded from freshness alarms. |
 
-**`asset_state_current`** [NEW entity] — one row per asset: the four dimensions above, `last_observed_at`, `last_received_at`, `reason_code`, `state_since`, `evaluated_at`, `evaluation_mode` (`LIVE|REPLAY`).
-**`asset_state_history`** [NEW entity] — append-only; one row per **change** of `operational_state`, `availability` or `communication_status` (freshness transitions are recorded as `communication_status` changes; raw freshness is recomputed, not stored per tick). Each row carries `observed_at`, `received_at`, `source_id`, `reason_code`, and `cause_event_id` when an event caused it.
+**`asset_state_current`** [Implemented additively in migration 012, shadow only] — one row per asset with `operational_state`, `availability`, `communication_status`, `evaluated_at`, `state_since`, a reason, JSONB `evidence_summary`, and `evidence_schema_version`. Existing readers remain authoritative.
+**`asset_state_history`** [Implemented additively in migration 012] — append-only baseline on first evaluation, then one row only when the semantic tuple (`operational_state`, `availability`, `communication_status`) changes. Freshness-only changes stay in `series_freshness_current` and current evidence. A database trigger rejects update/delete; the G5 retention policy is still an explicit decision.
 
-**Compatibility projection (preserves today’s KPI/UI):** the existing five health statuses are computed from these fields without changing results: `critical`→`operational_state=CRITICAL`; `no_data`→`freshness IN (STALE,MISSING)` while asset previously reported *and* no heartbeat/telemetry in the KPI window; `warning`→`WARNING`; `unknown`→`UNKNOWN`; `normal`→otherwise. The KPI SQL is **not** replaced initially (`DATA_MIGRATION_PLAN.md` M5).
+**Compatibility mapping (shadow only):** `critical`→`operational_state=CRITICAL`; `warning`→`WARNING`; `normal`→`NORMAL`; `no_data` and `unknown`→`UNKNOWN`. This mapping does not replace or feed the current KPI/dashboard/alert/chat readers. See [`ASSET_STATE_DESIGN.md`](ASSET_STATE_DESIGN.md) for the full dimension mapping and parity evidence.
 
 ---
 
 ## 9. Freshness and missing-data semantics
 
-**`reporting_expectations`** [Implemented schema, migration 009]: scopes are exactly `ASSET_METRIC`, `ASSET_TYPE_METRIC`, `SOURCE`, and `GLOBAL`, resolved in contract §9 order. Fields include `record_kind`, metric/event key, positive interval, stale/missing multipliers, priority, validity range, and expectation version. Seeded global rows are telemetry 900s, heartbeat 3600s, and source keepalive 300s; stale/missing multipliers are 2/5. No evaluator reads the table yet. Event-only devices without an expected heartbeat remain `NOT_APPLICABLE` under contract §9.
+**`reporting_expectations`** [Implemented schema, migration 009]: scopes are exactly `ASSET_METRIC`, `ASSET_TYPE_METRIC`, `SOURCE`, and `GLOBAL`, resolved in contract §9 order. Fields include `record_kind`, metric/event key, positive interval, stale/missing multipliers, priority, validity range, and expectation version. Seeded global rows are telemetry 900s, heartbeat 3600s, and source keepalive 300s; series stale/missing multipliers are 2/5. The freshness job reads these expectations. Event-only devices without an expected heartbeat remain `NOT_APPLICABLE` under contract §9.
 
-**`data_gaps` and `series_freshness_current`** [Implemented schema, migration 009]: these tables are empty initially and have no application writer in E2. The approved future evaluator opens a gap only when a series reaches `MISSING`, uses `last_observed_at` as `gap_start`, and closes it at the first new observation. Backfill-driven gap splitting is deferred. Freshness creates no alerts or incidents; it does not write `asset_state_current` or change availability (item 1.4).
+**`data_gaps` and `series_freshness_current`** [Implemented schema, migrations 009–010]: the freshness job writes current series states and opens a gap only at `MISSING`; `gap_start` is the last valid observation time and `detected_at` is separate. A gap closes only on a valid observation newer than the last valid observation at open time. Back-dated records neither close nor split it; `BAD` never closes it. Gaps do not create alerts or change asset health. Source liveness remains independent evidence under contract §9 and migration 011.
 
-**Initial rules** (defaults for discussion; all configurable):
+**Series freshness rules** (implemented by the E3 evaluator; thresholds are configurable):
 
 - `age = evaluation_time − last_observed_at` (data age).
 - `FRESH` if `age ≤ stale_factor × E` (default `stale_factor = 2`);
 - `STALE` if `stale_factor × E < age ≤ missing_factor × E` (default `missing_factor = 5`);
 - `MISSING` if `age > missing_factor × E`;
 - `NOT_APPLICABLE` when no expectation exists or `lifecycle_status ≠ ACTIVE`; never `FRESH` without at least one observation (`MISSING`/`UNKNOWN` instead).
-- **Series-level** freshness is evaluated per `(asset, metric)`; **asset-level** freshness uses the most recent liveness signal (any `is_liveness` series). An asset whose temperature series is stale but which still sends heartbeats is `COMMUNICATING` with one stale series.
+- Series freshness is evaluated per expected series. G3 does not collapse the series list into one freshness state; its separate communication projection follows the mapping in §8.
 - `evaluation_time` = wall clock in `LIVE` mode; an explicit `as_of` in `REPLAY` mode (keeps today’s data-relative demo behaviour, AD-07).
-- If the asset’s `data_sources.status` is `ERROR/DISABLED`, `communication_status` becomes `UNKNOWN` with `reason_code='SOURCE_ERROR'` and **`operational_state` and `availability` are left unchanged**.
+- Source liveness uses the E4b states `ALIVE`, `SILENT`, `UNKNOWN`, and `DISABLED`; `SILENT` is based on the configured 3× keepalive threshold. It does not itself set asset `OFFLINE`/`UNAVAILABLE`, change asset health, or create alerts. The G3 communication projection separately maps series freshness and source attribution as described in §8.
 
 **Missing vs delayed vs irregular:** missing = no row within the window → `data_gaps` row; delayed = row exists but `received_at − ts` exceeds a per-source threshold (derived flag, not stored); irregular = observed spacing deviates from `E` (reported by the gap query, `HISTORIAN_DESIGN.md` §9).
 
