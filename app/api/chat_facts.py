@@ -322,7 +322,7 @@ def _repair(conn, lang, hours, p, last):
     for k, r in enumerate(rows, 1):
         lines.append(f"{k}. #{r['incident_id']} · {r['severity'].upper()} · {r['status']} · {r['title']} "
                      f"({r['zone']}, {_t(r['last_ts'])}) [Q1]")
-    lines.append(_tr(lang, "Ask \"How do I fix this?\" after opening an incident to see its approved playbook actions.",
+    lines.append(_tr(lang, "Ask \"How do I fix this?\" after opening an incident to see evidence-matched playbook suggestions and their approval status.",
                      "يمكنك فتح حادث ثم سؤالي \"ازاي نصلح ده؟\" لعرض الإجراءات المعتمدة."))
     return "\n".join(lines), [src]
 

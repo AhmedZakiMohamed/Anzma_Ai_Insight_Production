@@ -1679,7 +1679,7 @@
           ${canAck ? '<button type="button" data-status="acknowledged">Acknowledge</button>' : ""}
           ${canResolve ? '<button type="button" data-status="resolved">Resolve</button>' : ""}
         </div>
-        <h4>Recommended actions <small>(approved playbook only)</small></h4>
+        <h4>Playbook suggestions <small>(provisional unless an approval record is shown)</small></h4>
         ${actions ? `<ul>${actions}</ul>` : "<p>No playbook action is supported by the evidence.</p>"}
         <h4>Alerts and evidence</h4>${alerts}`;
       $("incDetail").querySelectorAll("[data-status]").forEach(b =>
@@ -1711,8 +1711,12 @@
       try {
         const r = await jsonFetch(`/alerts/${alertId}/explain?use_llm=${llm}`, { method: "POST" });
         const [cls, text] = VAL_LABEL[r.validation.status] || ["", r.validation.status];
-        const rec = (r.recommendations || []).map(x => `<li><b>P${esc(x.priority)}</b> ${esc(x.text)}
-          <small>(${esc(x.basis.join("; "))})</small></li>`).join("");
+        const rec = (r.recommendations || []).map(x => {
+          const formallyApproved = x.status === "approved" && x.approver && x.approval_reference;
+          const state = formallyApproved ? `APPROVED · ${esc(x.approver)} · ${esc(x.approval_reference)}` : "PROVISIONAL · approval not recorded";
+          return `<li><b>P${esc(x.priority)}</b> <span class="tag">${state}</span> ${esc(x.text)}
+            <small>(${esc((x.basis || []).join("; "))})</small></li>`;
+        }).join("");
         const lim = (r.limitations || []).map(x => `<li>${esc(x)}</li>`).join("");
         const verification = r.evidence_verification
           ? `<span class="tag ${r.evidence_verification.unverified ? "bad" : "ok"}">Evidence rows verified:
@@ -1721,7 +1725,7 @@
           <div class="answer">${esc(r.answer)}</div>
           <div>
             <span class="tag">${esc(SRC_LABEL[r.ai_source] || r.ai_source)}${r.model_used ? " · " + esc(r.model_used) : ""}</span>
-            <span class="tag ${cls}" title="Checks that numbers, times, dates and citations exist in the stored evidence and that causes and actions come from the approved playbook. It is not a semantic check.">${esc(text)}</span>
+            <span class="tag ${cls}" title="Checks evidence grounding and playbook membership. It does not independently verify meaning or causation.">${esc(text)}</span>
             <span class="tag">Data: ${esc(r.data_sufficiency)}</span>${verification}
           </div>
           ${rec ? `<h4>Recommendations</h4><ul>${rec}</ul>` : ""}

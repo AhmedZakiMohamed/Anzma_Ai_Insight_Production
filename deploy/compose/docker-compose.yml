@@ -39,7 +39,8 @@ services:
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 10s
-      timeout: 5s
+      timeout: 30s
+      start_period: 30s
       retries: 10
     # NVIDIA GPU: uncomment if Docker has the NVIDIA container runtime
     # deploy:
@@ -73,13 +74,14 @@ services:
     environment:
       PGHOST: db
       PGPORT: "5432"
-      PGDATABASE: ${PGDATABASE:-anzma}
+      PGDATABASE: ${API_PGDATABASE:-${PGDATABASE:-anzma}}
       PGUSER: ${PGUSER:-postgres}
       PGPASSWORD: ${PGPASSWORD:?Set PGPASSWORD in .env}
-      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:3b}
       OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-120}
-      ANZMA_API_TOKEN: ${ANZMA_API_TOKEN:?Set ANZMA_API_TOKEN in .env}
+      ANZMA_API_TOKEN: ${ANZMA_API_TOKEN:-}
+      ANZMA_AUTH_DISABLED: ${ANZMA_AUTH_DISABLED:-false}
       ANZMA_COOKIE_SECURE: ${ANZMA_COOKIE_SECURE:-false}
       ANZMA_INGEST_RATE_LIMIT_PER_MIN: ${ANZMA_INGEST_RATE_LIMIT_PER_MIN:-60}
       ANZMA_INGEST_RATE_LIMIT_BURST: ${ANZMA_INGEST_RATE_LIMIT_BURST:-10}
@@ -90,7 +92,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "${API_HOST_PORT:-8000}:8000"
+      - "${API_BIND_ADDRESS:-127.0.0.1}:${API_HOST_PORT:-8000}:8000"
 
 
   # Opt-in, database-only evaluator; the API container does not own its lifecycle.
@@ -106,7 +108,7 @@ services:
     environment:
       PGHOST: db
       PGPORT: "5432"
-      PGDATABASE: ${PGDATABASE:-anzma}
+      PGDATABASE: ${API_PGDATABASE:-${PGDATABASE:-anzma}}
       PGUSER: ${PGUSER:-postgres}
       PGPASSWORD: ${PGPASSWORD:?Set PGPASSWORD in .env}
       ANZMA_FRESHNESS_INTERVAL_SECONDS: ${ANZMA_FRESHNESS_INTERVAL_SECONDS:-60}

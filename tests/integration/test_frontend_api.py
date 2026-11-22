@@ -413,7 +413,8 @@ def _():
     ex = client.post(f"/alerts/{alert_id}/explain", params={"use_llm": "false"}).json()
     assert ex["validation"]["status"] == "grounding_supported" and ex["validation"]["scope"] == "grounding"
     assert ex["evidence_verification"]["unverified"] == 0 and ex["recommendations"]
-    assert all(r["status"] == "approved" for r in ex["recommendations"])
+    assert all(r["status"] == "provisional" and not r["approver"] and not r["approval_reference"]
+               for r in ex["recommendations"])
 
 
 @test("incident lifecycle over HTTP: open -> acknowledged -> resolved; resolved is final (409); unknown -> 404")

@@ -71,6 +71,7 @@ def build_database():
 
 
 import app.adapters.model_providers.ai_explainer as ai_explainer                                       # noqa: E402
+from app.adapters.model_providers.ollama_provider import OllamaProvider                                  # noqa: E402
 import app.adapters.database.db_adapter as da                                   # noqa: E402
 import app.domain.evidence.evidence as evd                                    # noqa: E402
 import app.domain.incidents.incident_engine as inc                             # noqa: E402
@@ -472,9 +473,9 @@ def _():
 # ------------------------------------------------------------------ 6. fallback
 @test("fallback: Ollama unreachable -> grounding_supported deterministic answer, limitation stated, stored as 'fallback'")
 def _():
-    ai_explainer.OLLAMA_HOST, ai_explainer.OLLAMA_TIMEOUT = "http://127.0.0.1:1", 2
+    provider = OllamaProvider(host="http://127.0.0.1:1", model="qwen2.5:3b", timeout=2)
     a = stored("NET_PACKET_LOSS")
-    out = pipeline.explain_alert(CUR, a["id"], use_llm=True)
+    out = pipeline.explain_alert(CUR, a["id"], use_llm=True, provider=provider)
     CUR.execute("SELECT explanation_source, explained_at, explanation FROM alerts WHERE alert_id=%s", (a["id"],))
     row = CUR.fetchone()
     CONN.rollback()
@@ -486,9 +487,9 @@ def _():
 
 @test("pipeline: explain_incident returns verified evidence, one grounding-checked explanation per alert and the actions")
 def _():
-    ai_explainer.OLLAMA_HOST = "http://127.0.0.1:1"
+    provider = OllamaProvider(host="http://127.0.0.1:1", model="qwen2.5:3b", timeout=2)
     i = stored("HVAC_HIGH_TEMP")["incident_id"]
-    out = pipeline.explain_incident(CUR, i, use_llm=True)
+    out = pipeline.explain_incident(CUR, i, use_llm=True, provider=provider)
     CONN.rollback()
     assert out["evidence"]["verified"] == out["evidence"]["total"] > 0
     assert set(out["explanations"]) == set(out["incident"]["alert_ids"])

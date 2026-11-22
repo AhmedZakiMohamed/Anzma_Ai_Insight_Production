@@ -13,7 +13,6 @@ import json
 import os
 import re
 import sys
-import urllib.request
 from datetime import datetime, timezone
 from functools import lru_cache
 from typing import Any
@@ -39,10 +38,6 @@ except Exception:  # pragma: no cover - fallback if a submodule is unavailable i
     val = None
     alert_cfg = None
 
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
-
-
 def _grounding_compute(success: bool, *, rows=None, allow_empty=True):
     if not success:
         return False
@@ -53,29 +48,22 @@ def _grounding_compute(success: bool, *, rows=None, allow_empty=True):
     return bool(rows)
 
 
-def _ollama_chat(payload):
-    body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(f"{OLLAMA_HOST}/api/chat", data=body, headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT) as resp:
-        return json.loads(resp.read())
-
-
 # ======================================================================================================
-# LLM AGENT  (paste this block in app/chat_lite.py, replacing _ollama_tool_loop and _maybe_use_tool_loop)
+# LLM agent: model calls go through the injected provider contract.
 # ======================================================================================================
-OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "120"))
-
 AGENT_TOOLS = [
-    {"type": "function", "function": {
+    {
         "name": "run_sql",
         "description": "Run ONE read-only PostgreSQL SELECT/WITH query on the building database and get the rows back.",
         "parameters": {"type": "object", "properties": {
             "sql": {"type": "string", "description": "A single SELECT or WITH query, no semicolon."}},
-            "required": ["sql"]}}},
-    {"type": "function", "function": {
+            "required": ["sql"]},
+    },
+    {
         "name": "explain_alert",
-        "description": "Explain one alert (cause + approved playbook actions) using verified evidence.",
-        "parameters": {"type": "object", "properties": {"alert_id": {"type": "integer"}}, "required": ["alert_id"]}}},
+        "description": "Explain one alert (cause + playbook actions) using verified evidence.",
+        "parameters": {"type": "object", "properties": {"alert_id": {"type": "integer"}}, "required": ["alert_id"]},
+    },
 ]
 
 
@@ -136,10 +124,10 @@ def _numbers_grounded(answer, evidence_text, row_counts):
     return True
 
 
-def _agent_answer(message, history, session_state, lang, cur, conn, body, pipeline=None):
+def _agent_answer(message, history, session_state, lang, cur, conn, body, pipeline=None, model_provider=None):
     """Let the local model answer by calling SQL tools in a loop. Returns None if the model is unavailable or
     gives up, so the caller can fall back to the rule-based answers."""
-    if body.use_llm is False:
+    if body.use_llm is False or model_provider is None:
         return None
     messages = [{"role": "system", "content": _agent_system_prompt(getattr(body, "hours", None))}]
     turns = list(history or [])[-4:]
@@ -156,15 +144,17 @@ def _agent_answer(message, history, session_state, lang, cur, conn, body, pipeli
     lang_fixed = False
     try:
         for _ in range(5):                                       # max 5 tool rounds
-            resp = _ollama_chat({"model": OLLAMA_MODEL, "messages": messages, "tools": AGENT_TOOLS,
-                                 "stream": False,
-                                 "keep_alive": "30m",            # top-level (not inside options)
-                                 "options": {"temperature": 0.2, "num_ctx": 4096, "num_predict": 300}})
-            print("[chat] prompt_tokens =", resp.get("prompt_eval_count"), flush=True)
-            msg = resp.get("message") or {}
-            calls = msg.get("tool_calls") or []
+            reply = model_provider.complete(
+                messages=messages, tools=AGENT_TOOLS, keep_alive="30m",
+                options={"temperature": 0.2, "num_ctx": 4096, "num_predict": 300},
+            )
+            print("[chat] prompt_tokens =", reply.prompt_tokens, flush=True)
+            calls = [{"name": call.name, "arguments": call.arguments} for call in reply.tool_calls]
+            msg = {"role": "assistant", "content": reply.content}
+            if calls:
+                msg["tool_calls"] = calls
             if not calls:
-                answer = (msg.get("content") or "").strip()
+                answer = (reply.content or "").strip()
                 if not answer:
                     return None
                 # model wrote SQL as text instead of calling the tool -> ask once to run it properly
@@ -184,13 +174,10 @@ def _agent_answer(message, history, session_state, lang, cur, conn, body, pipeli
                         continue
                     return None
                 passed = bool(evidence) and _numbers_grounded(answer, " ".join(evidence), row_counts)
-                return _reply(answer, lang, "OLLAMA", passed, sources, extra={"session_state": {"last_assets": []}})
+                return _reply(answer, lang, "LLM", passed, sources, extra={"session_state": {"last_assets": []}})
             messages.append(msg)
             for call in calls:
-                fn = call.get("function") or {}
-                name, args = fn.get("name"), fn.get("arguments") or {}
-                if isinstance(args, str):
-                    args = json.loads(args or "{}")
+                name, args = call.get("name"), call.get("arguments") or {}
                 try:
                     if name == "run_sql":
                         rows = _run_readonly_sql(cur, args.get("sql", ""))
@@ -217,7 +204,7 @@ def _agent_answer(message, history, session_state, lang, cur, conn, body, pipeli
                     except Exception:
                         pass
                     result = f"ERROR: {exc}. Use only these tables/columns:\n{_schema_text()}"
-                messages.append({"role": "tool", "tool_name": name, "content": result[:2500]})
+                messages.append({"role": "tool", "name": name, "content": result[:2500]})
         return None
     except Exception as exc:                                     # Ollama down / timeout / bad JSON
         print(f"[chat] LLM agent failed: {exc!r}", flush=True)
@@ -266,7 +253,7 @@ def _metric_latest(cur, metric_name, needle):
         params.extend([f"%{needle}%", f"%{needle}%"])
     sql = f"""
         SELECT a.name AS asset_name, l.name AS location_name, mt.name AS metric_name, t.ts, t.value
-        FROM v_telemetry_valid t
+        FROM telemetry_records t
         JOIN metric_types mt ON mt.metric_id = t.metric_id
         JOIN assets a ON a.asset_id = t.asset_id
         JOIN locations l ON l.location_id = a.location_id
@@ -445,7 +432,7 @@ def _hvac_temp_higher_fallback(cur, body, lang):
     sql = """
         SELECT a.asset_id, a.name AS asset_name, l.name AS zone, st.code AS system,
                m.name AS metric_name, t.ts, t.value
-        FROM v_telemetry_valid t
+        FROM telemetry_records t
         JOIN metric_types m ON m.metric_id = t.metric_id
         JOIN assets a ON a.asset_id = t.asset_id
         JOIN locations l ON l.location_id = a.location_id
@@ -614,8 +601,6 @@ def _safe_sql(sql_text: str) -> str:
     # enum values in the schema are lowercase; the model sometimes writes 'CRITICAL' / 'RESOLVED'
     text = re.sub(r"'(CRITICAL|WARNING|INFO|OPEN|ACKNOWLEDGED|RESOLVED)'",
                   lambda m: "'" + m.group(1).lower() + "'", text)
-    # The model may query the base fact table; route telemetry reads through the quality-aware view.
-    text = re.sub(r"(?i)(\b(?:FROM|JOIN)\s+)telemetry_records\b", r"\1v_telemetry_valid", text)
     if " LIMIT " not in upper:
         text = f"{text.rstrip(';')} LIMIT 200"
     return text
@@ -640,7 +625,7 @@ def get_schema():
         return {
             "tables": [
                 "assets", "locations", "system_types", "metric_types", "event_types",
-                "telemetry_records", "v_telemetry_valid", "event_records", "alerts", "incidents",
+                "telemetry_records", "event_records", "alerts", "incidents",
             ],
             "columns": {
                 "assets": ["asset_id", "name", "asset_code", "system_type_id", "location_id"],
@@ -703,7 +688,7 @@ def _looks_like_fix_question(low: str) -> bool:
 def _alert_fix(cur, conn, body, lang, alert_id):
     if recs is None or da is None:
         return _reply(
-            "I can only recommend approved playbook actions if the alert is still in the database." if lang == "en"
+            "I can only show evidence-matched playbook suggestions if the alert is still in the database." if lang == "en"
             else "أستطيع اقتراح إجراءات playbook المعتمدة فقط إذا كان التنبيه ما يزال موجوداً في قاعدة البيانات.",
             lang, "DATABASE", False, sufficient=False,
         )
@@ -711,7 +696,7 @@ def _alert_fix(cur, conn, body, lang, alert_id):
     alert = da.get_alert(cur, alert_id)
     if alert is None:
         return _reply(
-            "I couldn’t find that alert in the database, so there are no approved playbook actions to show." if lang == "en"
+            "I couldn’t find that alert in the database, so there are no playbook suggestions to show." if lang == "en"
             else "لم أجد هذا التنبيه في قاعدة البيانات، لذلك لا توجد إجراءات playbook معتمدة لعرضها.",
             lang, "DATABASE", False, sufficient=False,
         )
@@ -723,18 +708,20 @@ def _alert_fix(cur, conn, body, lang, alert_id):
 
     items = rec.get("recommendations") or []
     if not items:
-        text = "There are no approved playbook actions for that alert in the database." if lang == "en" else "لا توجد إجراءات playbook معتمدة لهذا التنبيه في قاعدة البيانات."
+        text = "There are no evidence-matched playbook suggestions for that alert in the database." if lang == "en" else "لا توجد اقتراحات playbook مدعومة بالأدلة لهذا التنبيه في قاعدة البيانات."
         return _reply(text, lang, "DATABASE", True, sufficient=True, extra={"alert_id": alert_id, "session_state": {"last_alert_id": alert_id}})
 
     lines = [
-        "Approved playbook actions for this alert:" if lang == "en" else "إجراءات playbook المعتمدة لهذا التنبيه:",
+        "Playbook suggestions for this alert (provisional unless an approval record is shown):" if lang == "en" else "اقتراحات playbook لهذا التنبيه (مبدئية ما لم يظهر سجل اعتماد):",
     ]
     sources = []
     for idx, item in enumerate(items[:5], 1):
         text = item.get("text") or item.get("action") or item.get("title") or item.get("action_id")
-        reason = item.get("basis") or item.get("because") or "approved action"
-        lines.append(f"- [Q{idx}] {text} — {reason}")
-        sources.append({"ref": f"Q{idx}", "text": f"Approved action: {text}; reason: {reason}; derived_by={item.get('derived_by', 'PLAYBOOK')}"})
+        reason = item.get("basis") or item.get("because") or ""
+        state = "APPROVED" if item.get("status") == "approved" and item.get("approver") and item.get("approval_reference") else "PROVISIONAL"
+        suffix = f" — {reason}" if reason else ""
+        lines.append(f"- [Q{idx}] [{state}] {text}{suffix}")
+        sources.append({"ref": f"Q{idx}", "text": f"{state} playbook suggestion: {text}; reason: {reason}; derived_by={item.get('derived_by', 'PLAYBOOK')}"})
 
     response = _reply("\n".join(lines), lang, "DATABASE", True, sources, hours=body.hours, extra={
         "alert_id": alert_id,
@@ -743,7 +730,7 @@ def _alert_fix(cur, conn, body, lang, alert_id):
     return response
 
 
-def create_router(day2_connect, pipeline, inc, use_llm_default, db_errors=()):
+def create_router(day2_connect, pipeline, inc, use_llm_default, db_errors=(), model_provider=None):
     router = APIRouter(prefix="/chat", tags=["Chat"])
 
     @router.get("/questions", summary="Suggested questions for the widget")
@@ -777,7 +764,8 @@ def create_router(day2_connect, pipeline, inc, use_llm_default, db_errors=()):
                     fixed = chat_facts.try_answer(low, lang, getattr(body, "hours", None))
                     if fixed is not None:
                         return fixed
-                    agent = _agent_answer(text, history, session_state, lang, cur, conn, body, pipeline)
+                    agent = _agent_answer(text, history, session_state, lang, cur, conn, body, pipeline,
+                                          model_provider=model_provider)
                     if agent is not None:
                         return agent
 

@@ -33,6 +33,7 @@ from app.repositories.dashboard_core_pg import (
 load_dotenv()
 
 from app.adapters.database import db_adapter as da
+from app.adapters.model_providers.ollama_provider import OllamaProvider
 from app.adapters.model_providers import ai_explainer
 from app.domain.alerts import alert_config as cfg
 from app.domain.evidence import evidence as evd
@@ -51,11 +52,15 @@ configure_cors(api, CORS_ALLOWED_ORIGINS)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "dashboard", "static")
 logger = logging.getLogger("anzma")
+model_provider = OllamaProvider.from_env()
+AUTH_DISABLED = os.getenv("ANZMA_AUTH_DISABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
 @api.middleware("http")
 async def authenticate_user_api(request: Request, call_next):
     """Protect every operational REST route; keep liveness, UI assets and ingestion auth separate."""
+    if AUTH_DISABLED:
+        return await call_next(request)
     path = request.url.path
     public = path in {"/", "/dashboard", "/health", "/ready", "/auth/session", "/auth/logout",
                       "/docs", "/redoc", "/openapi.json"} or path.startswith("/static/")
@@ -246,7 +251,7 @@ def explain_alert(alert_id: int, use_llm: bool = Query(default=False)):
                 if alert is None:
                     raise HTTPException(status_code=404, detail="Alert not found")
 
-                result = pipeline.explain_alert(cur, alert_id, use_llm=use_llm)
+                result = pipeline.explain_alert(cur, alert_id, use_llm=use_llm, provider=model_provider)
                 conn.commit()
                 return result
     except HTTPException:
@@ -307,6 +312,7 @@ def ask(request: AskRequest) -> dict[str, Any]:
                     cur,
                     alert_id,
                     use_llm=request.use_llm,
+                    provider=model_provider,
                 )
                 conn.commit()
 
@@ -330,7 +336,7 @@ api.include_router(frontend_api.create_router())
 api.include_router(freshness_api.create_router())
 api.include_router(chat_lite.create_router(
     day2_connect, pipeline, inc, use_llm_default=os.getenv("CHAT_USE_LLM", "true").lower() == "true",
-    db_errors=DB_ERRORS))
+    db_errors=DB_ERRORS, model_provider=model_provider))
 
 
 class IngestionConnector(BaseModel):
@@ -674,6 +680,8 @@ sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=socketio_cors
 @sio.event
 async def connect(sid, environ, auth=None):
     """Socket.IO shares the user API bearer token, separately from ingestion keys."""
+    if AUTH_DISABLED:
+        return True
     if not socket_authenticate(auth, environ.get("HTTP_COOKIE")):
         return False
     return True
@@ -721,7 +729,7 @@ async def _alert_loop():
 
 
 async def _startup():
-    if len(os.getenv("ANZMA_API_TOKEN", "")) < 32:
+    if not AUTH_DISABLED and len(os.getenv("ANZMA_API_TOKEN", "")) < 32:
         raise RuntimeError("ANZMA_API_TOKEN must contain at least 32 characters.")
     _background.append(asyncio.create_task(_alert_loop()))
 

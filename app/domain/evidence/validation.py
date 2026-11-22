@@ -16,13 +16,16 @@ Validation runs on the FINAL text whatever produced it (model or deterministic f
 checks that really ran. These checks are GROUNDING checks (values, citations, playbook membership); they are not a
 semantic check of meaning - see the note in the hand-over about DATA_MODEL rule 7.
 """
-from app.adapters.model_providers import ai_explainer as ai
+from app.domain.ai import explanation as ai
 from app.domain.ai import recommendations as recs
+from app.domain.evidence import grounding
+from app.domain.ai.model_provider import ModelProvider
+import re
 
 GROUNDING_SUPPORTED, FAILED, NOT_VALIDATED = "grounding_supported", "failed", "not_validated"
 SCOPE = "grounding"
 COMPLETE, PARTIAL, NO_DATA = "complete", "partial", "no_data"
-AI_SOURCE = {"OLLAMA": "llm", "FALLBACK": "fallback", "RULES": "rules"}
+AI_SOURCE = {"LLM": "llm", "FALLBACK": "fallback", "RULES": "rules"}
 
 # check names implemented for ALERT explanations (first four are shared with the chat validator in the contract;
 # the last three are alert-specific and must be added to the contract's checks_run list)
@@ -61,8 +64,13 @@ def assess_evidence(evidence, causes_supported=True):
 
 def validate_explanation(alert, asset, explanation, attempts=1):
     """Re-check a finished explanation against stored evidence. Returns the contract's `validation` object."""
-    pkg = ai.build_package(alert, asset)
-    errors = list(ai.check_text(explanation.get("summary", ""), pkg))
+    pkg = grounding.build_package(alert, asset)
+    errors = list(grounding.check_text(explanation.get("summary", ""), pkg))
+    summary = explanation.get("summary", "")
+    # This is a narrow certainty-language guard, not a general semantic verifier.
+    # Evidence matching a reading/citation does not establish a causal diagnosis.
+    if re.search(r"\b(definitely caused|certainly caused|the cause is|confirms that|proves that|diagnosed as|was caused by)\b", summary, re.I):
+        errors.append("summary states a definitive cause that the grounding checks cannot verify")
     result = recs.recommend(alert)
     ok_causes = {c["id"] for c in result["probable_causes"]}
     ok_actions = {r["action_id"] for r in result["recommendations"]}
@@ -72,7 +80,7 @@ def validate_explanation(alert, asset, explanation, attempts=1):
             errors.append(f"cause {c.get('id')} is not supported by the measured facts")
     for a in explanation.get("recommended_actions", []):
         if a.get("id") not in ok_actions:
-            errors.append(f"action {a.get('id')} is not an approved action for this alert")
+            errors.append(f"action {a.get('id')} is not an eligible playbook action for this alert")
     for r in explanation.get("evidence_refs", []):
         if r not in refs:
             errors.append(f"evidence ref {r} does not exist")
@@ -114,7 +122,8 @@ def _verification_summary(verification):
             "unverified": len(verification["unverified"]), "problems": verification["unverified"]}
 
 
-def explain_alert(alert, asset, use_llm=True, verification=None, as_of=None):
+def explain_alert(alert, asset, use_llm=True, verification=None, as_of=None,
+                  provider: ModelProvider | None = None):
     """Alert -> explanation -> grounding check -> contract response (+ playbook recommendations).
 
     verification: result of evidence.alert_evidence() (rows re-read from the fact tables). When given, the evidence
@@ -155,7 +164,7 @@ def explain_alert(alert, asset, use_llm=True, verification=None, as_of=None):
             limitations=limitations) | {"recommendations": [], "probable_causes": [],
                                         "evidence_verification": summary}
 
-    explanation = ai.explain(alert, asset, use_llm=use_llm)
+    explanation = ai.explain(alert, asset, use_llm=use_llm, provider=provider)
     g = explanation.get("grounding", {})
     attempts = g.get("attempts") or (len(g.get("rejected_answers", [])) or 0)
     validation = validate_explanation(alert, asset, explanation, attempts=attempts)

@@ -1,7 +1,7 @@
 # CONNECTOR_ARCHITECTURE.md — Anzma AI Insight Core
 
-**Status:** Design proposal. **No connector exists and none is built in this phase.**
-**Scope:** the general architecture every connector follows. No vendor-specific design, no vendor SDKs (out of scope for Sprint 1).
+**Status:** Core v1 ingestion and a reference simulator are implemented. This document describes the connector boundary; **no real vendor/device system is connected yet.**
+**Scope:** the general architecture every connector follows. Vendor-specific protocol integration and vendor SDKs remain future work.
 **Normative wire format:** [`INGESTION_CONTRACT.md`](INGESTION_CONTRACT.md). **Storage:** [`CONTRACT_TO_DB_MAPPING.md`](CONTRACT_TO_DB_MAPPING.md). **Entity semantics:** [`CANONICAL_DATA_MODEL.md`](CANONICAL_DATA_MODEL.md). **Historian:** [`HISTORIAN_DESIGN.md`](HISTORIAN_DESIGN.md).
 
 Tags: **[Decided]**, **[Proposed]**, **[Open]**, **[Verified]** (checked in the repository).
@@ -12,12 +12,27 @@ Tags: **[Decided]**, **[Proposed]**, **[Open]**, **[Verified]** (checked in the 
 
 **Purpose.** Let any external system (BMS, VMS, PSIM, a vendor SDK, a protocol gateway, a file drop, a simulator) deliver data to the Core in exactly one way, so that adding a vendor never requires a Core code change or a Core data-model change.
 
-**Non-goals for this phase**
+**Current limits**
 
-* No vendor-specific connector, including the Milestone plugin (a separate project per the product plan).
-* No database changes and no ingestion endpoint (design only).
+* No real vendor-specific connector, including the Milestone plugin (a separate project per the product plan).
 * No equipment control and no write-back to external systems.
 * No message broker. PostgreSQL stays the only store (`HISTORIAN_DESIGN.md`, AD-01).
+
+## 1.1 Current proof and limits (22 November 2026)
+
+The reference simulator exercises the ingestion path, but its sample IDs and readings are demo data. The verified Main Tower setup registered source `reference-simulator-main-tower` for building `MAIN-TOWER-DEMO` and mapped nine external IDs to existing Main Tower seed assets. Those IDs use the `seed:` prefix; they are **not IDs from a real vendor**. A normal simulated batch accepted 4,154 records with no rejections. During the check, source liveness was `ALIVE` inside its grace window while `vendor_link` remained `UNKNOWN`.
+
+The simulator sends a batch and then keepalives; it does not continuously receive sensor telemetry. No external BMS, device, or vendor was connected in this verification.
+
+For a real integration, the path is:
+
+1. A vendor connector reads the external system and translates its names, units, timestamps, and device IDs into the canonical ingestion contract.
+2. The connector posts the batch to `POST /api/v1/ingest/batches` using that source's credential and external IDs.
+3. Core validates the source/building scope and resolves each external ID through the mapping table to an existing Core asset. An unresolved external ID is rejected; it does not create an asset or expose a Core ID to the vendor.
+4. Core persists accepted observations and provenance. Freshness evaluation and alert/incident detection run through their Core paths; the ingestion call itself does not create a chatbot recommendation.
+5. The dashboard displays stored operational information. An operator can ask the assistant to explain an incident and recommend actions using available evidence. This is an operator interaction, not an automatic response to every incoming signal.
+
+Reported-state records can be stored, but they are not currently consumed by alert/incident rules. See [`INGESTION_CONTRACT.md`](INGESTION_CONTRACT.md) for the wire contract and [`DAY3_DEPLOYMENT_VERIFICATION.md`](DAY3_DEPLOYMENT_VERIFICATION.md) for install/runtime evidence.
 
 ---
 
@@ -271,7 +286,7 @@ A connector may be called ready when it:
 7. Sends no Core-derived fields and no internal IDs.
 8. Keeps all customer-specific configuration outside the code.
 
-**Recommended first implementation:** a **simulator connector** that replaces today's seed and injection scripts and emits the existing simulated data through the real contract. It needs no vendor SDK (allowed under the sprint rules) and validates the whole path, including `legacy-seed` retirement, before any vendor work.
+**Implemented reference:** the repository includes a simulator connector that sends synthetic readings through the real contract. It demonstrates the Core ingestion boundary, but it does not replace a real vendor integration or prove live sensor connectivity. The next real integration still needs a selected vendor/protocol, its payload or documentation, and an external-ID/metric mapping.
 
 ---
 

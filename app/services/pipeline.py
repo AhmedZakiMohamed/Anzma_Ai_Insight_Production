@@ -11,6 +11,7 @@ from app.adapters.database import db_adapter as da
 from app.domain.evidence import evidence
 from app.domain.incidents import incident_engine as inc
 from app.domain.evidence import validation as val
+from app.domain.ai.model_provider import ModelProvider
 
 
 @da.guard
@@ -32,7 +33,7 @@ def detect(cur, hours=None):
 
 
 @da.guard
-def explain_alert(cur, alert_id, use_llm=True, persist=True):
+def explain_alert(cur, alert_id, use_llm=True, persist=True, provider: ModelProvider | None = None):
     """Explanation + grounding check + recommendations for one stored alert.
 
     By default the response is saved on the alert. Callers that only need an ephemeral explanation can pass
@@ -44,17 +45,18 @@ def explain_alert(cur, alert_id, use_llm=True, persist=True):
     asset = da.get_asset(cur, alert["asset_id"])
     verification = evidence.alert_evidence(cur, alert_id)
     response = val.explain_alert(alert, asset, use_llm=use_llm, verification=verification,
-                                 as_of=da.latest_ts(cur))
+                                 as_of=da.latest_ts(cur), provider=provider)
     if persist:
         da.save_explanation(cur, alert_id, response)
     return response
 
 
 @da.guard
-def explain_incident(cur, incident_id, use_llm=True):
+def explain_incident(cur, incident_id, use_llm=True, provider: ModelProvider | None = None):
     """One grounding-checked explanation per alert of the incident, plus verified evidence and merged recommendations."""
     incident = inc.get_incident(cur, incident_id)
     if incident is None:
         raise LookupError(f"incident {incident_id} not found")
     return {"incident": incident, "evidence": evidence.incident_evidence(cur, incident_id),
-            "explanations": {a: explain_alert(cur, a, use_llm) for a in incident["alert_ids"]}}
+            "explanations": {a: explain_alert(cur, a, use_llm, provider=provider)
+                             for a in incident["alert_ids"]}}

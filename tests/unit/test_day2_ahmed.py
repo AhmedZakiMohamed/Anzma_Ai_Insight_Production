@@ -20,6 +20,7 @@ except ImportError:
     sys.modules["psycopg2"], sys.modules["psycopg2.extras"] = pkg, extras
 
 from app.adapters.model_providers import ai_explainer
+from app.adapters.model_providers.ollama_provider import OllamaProvider
 from app.domain.alerts import alert_engine
 from app.domain.operations import integrity_rules as ir
 from app.domain.ai import recommendations as recs
@@ -234,7 +235,9 @@ def _():
     assert "HVAC_FAN" in ids and "HVAC_COOLING" in ids and "HVAC_IT_NOTIFY" in ids, ids
     assert "HVAC_FILTER" not in ids                                         # no filter fault in the evidence
     assert all(x["derived_by"] == "PLAYBOOK" and x["evidence_refs"] and x["basis"] for x in r["recommendations"])
-    assert recs.is_approved(HIGH, "HVAC_FAN") and not recs.is_approved(HIGH, "REPLACE_CHILLER")
+    assert not recs.is_approved(HIGH, "HVAC_FAN") and not recs.is_approved(HIGH, "REPLACE_CHILLER")
+    assert all(x["status"] == "provisional" and not x["approver"] and not x["approval_reference"]
+               for x in r["recommendations"])
 
 
 @test("recommendations: unknown rule or empty evidence yields no recommendation and a limitation")
@@ -262,6 +265,14 @@ def _():
            "evidence_refs": ["E1"]}
     v = val.validate_explanation(HIGH, ASSET, bad)
     assert v["status"] == "failed" and any("41.7" in x for x in v["errors"]), v
+
+
+@test("validation: evidence-supported number does not authorize a definitive causal claim")
+def _():
+    bad = {"summary": "The compressor definitely caused the failure. Temperature reached 33.1 °C [E1].",
+           "probable_causes": [], "recommended_actions": [], "evidence_refs": ["E1"]}
+    v = val.validate_explanation(HIGH, ASSET, bad)
+    assert v["status"] == "failed" and any("definitive cause" in x for x in v["errors"]), v
 
 
 @test("validation: invented cause, unapproved action and unknown citation are rejected")
@@ -332,8 +343,8 @@ def _():
 # ------------------------------------------------------------------ 5. safe fallback when the model is down
 @test("fallback: Ollama unreachable -> deterministic grounding_supported answer with the limitation stated")
 def _():
-    ai_explainer.OLLAMA_HOST, ai_explainer.OLLAMA_TIMEOUT = "http://127.0.0.1:1", 2     # nothing listens here
-    out = val.explain_alert(HIGH, ASSET, use_llm=True)
+    provider = OllamaProvider(host="http://127.0.0.1:1", model="qwen2.5:3b", timeout=2)
+    out = val.explain_alert(HIGH, ASSET, use_llm=True, provider=provider)
     assert out["ai_source"] == "fallback" and out["model_used"] is None, out["ai_source"]
     assert out["validation"]["status"] == "grounding_supported"
     assert any("language model was unavailable" in x for x in out["limitations"]), out["limitations"]
@@ -361,11 +372,11 @@ def _():
         pass
 
 
-@test("playbook: every action carries a status and an approver")
+@test("playbook: actions without approval records remain provisional and have no invented approver")
 def _():
     from app.domain.alerts import alert_config as cfg
     acts = [a for b in cfg.PLAYBOOKS.values() for a in b["actions"]]
-    assert acts and all(a["status"] in ("approved", "draft") and a["approver"] for a in acts)
+    assert acts and all(a["status"] == "provisional" and not a["approver"] for a in acts)
 
 
 @test("playbook: a DRAFT action is never recommended, never eligible and is rejected by the validator")
@@ -383,7 +394,7 @@ def _():
         v = val.validate_explanation(HIGH, ASSET, bad)
         assert v["status"] == "failed" and any("HVAC_COOLING" in e for e in v["errors"]), v
     finally:
-        action["status"] = cfg.APPROVED
+        action["status"] = cfg.PROVISIONAL
     assert "HVAC_COOLING" in {x["action_id"] for x in recs.recommend(HIGH)["recommendations"]}
 
 

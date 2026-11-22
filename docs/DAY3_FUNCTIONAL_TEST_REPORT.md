@@ -1,81 +1,72 @@
-# Phase 0 local functional verification
+# Day 3 Functional Test Report
 
-**Run date:** 19 November 2026 (UTC)  
-**Branch:** `feature/ingestion-foundation`  
-**Base HEAD:** `8cf0bf22a7652254cae95a506a7b067e25a73e8f`
-**Tree tested:** uncommitted working-tree changes based on that HEAD. No commit was created because the task explicitly prohibited commits.
-**Isolation:** test databases and the restored H0 database were inside the new `anzma-phase0-closure` PostgreSQL 16 project. No shared/live database or existing Docker volume was used.
+**Report date:** 22 November 2026
+**Product:** Anzma AI Insight Core v0.1 — Consolidated Working Release
+**Checkout:** `main`, source base `455a185afda5704b83c2b1b2223e63529de06cef`
+**Release candidate:** Not created. The checkout contains uncommitted changes; this hash identifies the starting commit, not the tested final tree.
 
-## Regression and configuration suites
+## Executive result
 
-| Suite | Exact command | Result | Date / tested tree |
-|---|---|---:|---|
-| Day 2 unit | `docker exec anzma-phase0-closure-api-1 python tests/unit/test_day2_ahmed.py` | **28/28 PASS** | 2026-11-19, base HEAD `8cf0bf2` + worktree |
-| Data integrity/migrations | `docker exec anzma-phase0-closure-api-1 python tests/integration/test_data_integrity.py` | **23/23 PASS** | 2026-11-19, base HEAD `8cf0bf2` + worktree |
-| Day 2 operational intelligence | `docker exec anzma-phase0-closure-api-1 python tests/integration/test_day2_integration.py` | **43/43 PASS** | 2026-11-19, base HEAD `8cf0bf2` + worktree |
-| Chat/dashboard consistency | `docker exec anzma-phase0-closure-api-1 python tests/integration/test_chat_consistency.py http://127.0.0.1:8000` | **31/31 PASS** | 2026-11-19, bearer auth required |
-| Frontend/API, auth, legacy routes and ingestion conformance | `docker exec anzma-phase0-closure-api-1 python tests/integration/test_frontend_api.py` | **38/38 PASS** | 2026-11-19, final rebuilt worktree |
-| Snapshot comparator behavior | `python3 tests/unit/test_snapshot_compare.py` | **3/3 PASS** | 2026-11-19 |
-| Deployment configuration | `python3 tests/unit/test_deploy_security.py` | **4/4 PASS** | 2026-11-19 |
-| Dashboard smoke | `docker exec -e PYTHONPATH=/app anzma-phase0-closure-api-1 python tests/integration/test_dashboard.py` | **PASS; 12 monitored assets** | 2026-11-19; bounded latest 31-day window |
-| S1 fallback E2E | `docker exec -e OLLAMA_HOST=http://127.0.0.1:1 -e OLLAMA_TIMEOUT=1 anzma-phase0-closure-api-1 python tests/scenarios/e2e_s1.py --build --llm` | **15/15 PASS** | 2026-11-19; deliberately unreachable local model endpoint |
+The operator reports that the browser workflow is working and has completed the requested dashboard demonstration. The current checkout has also passed the latest recorded backend unit and frontend API suites, a deterministic-fallback S1 scenario, and a live-model S1 attempt that safely fell back. The live Qwen acceptance is **not passed**: the model did not return within either the default or extended request window. A video recording has not been provided or found in the repository, so the demonstration evidence is outstanding for independent review.
 
-The seven counted suites total **170/170** (28 + 23 + 43 + 31 + 38 + 3 + 4). The dashboard smoke script reports its result without a numbered count. The separate E2E outage/fallback run passed 15/15 and reported that the model was unavailable, the deterministic explanation used stored evidence, evidence checks passed, and recommendations came from approved playbooks. This does **not** establish that live model inference works.
+This is a working validation report, not a release sign-off. The reports and evidence are tied to the source base above, but the final dirty worktree has no immutable commit identifier.
 
-## Authentication and deployment checks
+## Scope and tested environment
 
-The Compose project was resolved and started with a new project name, volume, database password, and high-entropy API token. Secret values were not printed. `docker compose config` showed these host publications:
+- Existing local Windows/Docker Compose environment, project `anzma-core`.
+- Dashboard/API: `http://localhost:8000`; Ollama: `http://localhost:11434`; PostgreSQL remains on the existing Compose configuration.
+- Main application database: `anzma`. The S1 scenarios used a separate temporary `anzma_e2e` database, which was dropped after the runs.
+- Configured model: `qwen2.5:3b` (reported by Ollama as 1.9 GB).
+- No vendor SDK, KNX, historian, workflow engine, or new milestone integration was added.
 
-```text
-db ports= [('127.0.0.1', '15438', 5432)]
-ollama ports= [('127.0.0.1', '11436', 11434)]
-api ports= [(None, '18007', 8000)]
-api bearer token configured= True
+## Acceptance results
+
+| Requirement | Result | Evidence / note |
+|---|---|---|
+| Show all five building systems and current statuses | Operator reports passed | Current seeded dashboard shows HVAC, Network, Access Control, CCTV, and Fire Alarm. Recorded video was not supplied for review. |
+| Identify critical and warning conditions | Operator reports passed | Current dashboard shows warning and critical states; stale/missing data indicators are separate. |
+| Open incident and inspect alerts/evidence | Operator reports passed | S1 scenario checks incident evidence links; 14 of 14 evidence references resolved to stored source records. |
+| Acknowledge and resolve incident | Operator reports passed | Browser demonstration reported complete; no recording artifact available for independent confirmation. |
+| Verify counters update | Operator reports passed | Browser demonstration reported complete; no recording artifact available for independent confirmation. |
+| Apply system/time filters and verify consistency | Operator reports passed | Browser demonstration reported complete; no recording artifact available for independent confirmation. |
+| Ask assistant an operational question and inspect references | Partially verified | Fallback produced an explanation with available supporting evidence. A successful live Qwen answer was not obtained. |
+| Distinguish faults, recovered, historical, unavailable data | Operator reports passed; data checks partial | Current dashboard distinguishes warning/critical/no-data and freshness. Full browser recording is still needed for review. |
+| Live AI explanation from Qwen with model/source/grounding/recommendations | **Not passed** | Live S1 requests returned `ai_source=fallback`, `model_used=None`. Ollama logs show model load exceeded the request window and the client request was cancelled. |
+| Same scenario with model disabled / deterministic fallback | **Passed** | `tests/scenarios/e2e_s1.py --build`: 14/14 checks passed; all 14 evidence references resolved. |
+
+## Recorded checks on the current working tree
+
+| Check | Result | Scope |
+|---|---:|---|
+| `tests/unit/test_day2_ahmed.py` | 29/29 passed | Latest recorded run after the current Task 4 safety changes. |
+| `tests/integration/test_frontend_api.py` | 42/42 passed | Latest recorded run after the current Task 4 changes, with test authentication configured for that process. |
+| `tests/scenarios/e2e_s1.py --build` | 14/14 passed | Deterministic fallback path; isolated `anzma_e2e` DB. |
+| `tests/scenarios/e2e_s1.py --build --llm` | Scenario checks passed but live AI acceptance failed | Both default timeout and a process-only `OLLAMA_TIMEOUT=360` attempt used fallback; this is not a live-model pass. |
+| API readiness | HTTP 200 | `/ready` returned `{"status":"ready","database":"up"}` in the running Compose environment. |
+
+Earlier runs of other suites (43/43 and 23/23) were made before the latest Task 4 edits. They are historical evidence and have not been rerun against the current dirty tree; they are not counted as current regression passes.
+
+## AI safety behavior
+
+The current work makes corrective recommendations provisional unless a real approval record contains an approver and approval reference. Draft actions are excluded from recommendation output. The answer validator rejects several explicit unsupported-causality phrases, but this is a narrow safeguard and not a complete semantic verifier. A passed grounding check means the configured evidence checks passed; it does not prove that every sentence is semantically correct.
+
+## Outstanding before acceptance
+
+1. Diagnose Ollama model-load latency and verify whether Docker Desktop passes the host GPU through to the Ollama container. Do not treat the host GTX 1650 as proof that the container is using it.
+2. Repeat the same live-Qwen S1 scenario and record model identifier, source measurements, grounding result, answer, and recommendations only after a real model response is returned.
+3. Supply and review one continuous browser recording covering the required workflow and the live/fallback AI paths as required by the CEO acceptance criteria.
+4. Rerun the full approved regression suite against the final tree, record results, and tie the release package to a new clean Git commit.
+5. Have an independent QA reviewer follow `DAY3_QA_CHECKLIST.md`.
+
+## Reproduction commands
+
+From the repository root, in PowerShell:
+
+```powershell
+docker exec anzma-core-api-1 python /app/tests/unit/test_day2_ahmed.py
+docker exec -e ANZMA_AUTH_DISABLED=false anzma-core-api-1 python /app/tests/integration/test_frontend_api.py
+docker exec anzma-core-api-1 python /app/tests/scenarios/e2e_s1.py --build
+docker exec anzma-core-api-1 python /app/tests/scenarios/e2e_s1.py --build --llm
 ```
 
-HTTP checks returned `/health` 200 and `/ready` 200. Protected REST returned `401 AUTH_MISSING` without credentials, `401 AUTH_INVALID` for an invalid token, and 200 with the configured token. `POST /auth/session` returned 200 with an HttpOnly, SameSite=Strict cookie; cookie-authenticated `/incidents` returned 200; logout cleared it and access returned 401. Static assets, `/dashboard`, `/docs`, and `/openapi.json` are intentionally public. Normal REST and Socket.IO use the same deployment token; v1 ingestion continues to use its separate source-scoped key.
-
-Real network Socket.IO checks rejected missing and invalid credentials and accepted both a valid session cookie and a valid bearer token. The human browser login rendering and interaction are **NOT TESTED**.
-
-An isolated first ingestion request created source `p0-closure-e3a1a68f`, mapped `first-device`, and submitted one 22.5 C temperature record. It returned HTTP 200, `ACCEPTED`, `COMMITTED`, with one accepted record. The key stayed in process memory and was withheld from output. The frontend/API suite also confirmed legacy `POST /events` and `POST /alerts` still work.
-
-## §13.3 vector-to-test mapping
-
-Every vector has an independent test name and assertion in `tests/integration/test_frontend_api.py`; the final suite passed 38/38:
-
-| Vector | Test name |
-|---:|---|
-| 1 | `Vector 1: valid envelope accepts three records` |
-| 2 | `Vector 2: exact batch replay returns stored result` |
-| 3 | `Vector 3: changed payload reusing batch_id returns 409 BATCH_ID_REUSED` |
-| 4 | `Vector 4: same telemetry key and value in a new batch is a duplicate` |
-| 5 | `Vector 5: conflicting telemetry preserves the first value` |
-| 6 | `Vector 6: timestamp with a non-UTC offset is INVALID_TIMESTAMP` |
-| 7 | `Vector 7: timestamp ten minutes in the future is FUTURE_TIMESTAMP` |
-| 8 | `Vector 8: door_forced on a camera is EVENT_NOT_COMPATIBLE` |
-| 9 | `Vector 9: Fahrenheit telemetry is rejected with UNIT_MISMATCH` |
-| 10 | `Vector 10: unmapped external ID is rejected and audited` |
-| 11 | `Vector 11: quality MISSING is SCHEMA_INVALID` |
-| 12 | `Vector 12: state with only communication_status is SCHEMA_INVALID` |
-| 13 | `Vector 13: 1000 records with ten invalid records return PARTIAL` |
-| 14 | `Vector 14: 5001 records return 413 BATCH_TOO_LARGE` |
-| 15 | `Vector 15: wrong source_code for key returns 403 SOURCE_MISMATCH` |
-| 16 | `Vector 16: empty valid batch returns 200 and updates source liveness` |
-
-The same frontend/API run covers exact event retry/conflict identity, distinct source event IDs at one asset/type/time, legacy duplicate `POST /events`, auth error separation, 90-day back-date policy, source scopes, rejection audit/truncation, and plausibility quality behavior. The CRAC recovery assertion preserves its original purpose through a dedicated fault/recovery fixture; the seeded CRAC separately follows active alert state. All passed in the 38-case suite.
-
-The 2001 compatibility event is explicitly created by that suite in `TEST_DB = "anzma_api_test"`; the script creates this database before loading schema and fixtures. In the isolated closure cluster, a direct read returned `anzma_api_test 2001_test_event_count=1`, `anzma 2001_test_event_count=0`, and `h0_rehearsal 2001_test_event_count=0`. The fixed dashboard smoke bounds itself to the latest 31-day interval and reported 12 assets. The original/shared database was not queried or modified.
-
-## H0 snapshot and database result
-
-The current-code rerun restored the supplied H0 dump, applied 006–008, verified the ledger no-op on rerun, matched every original table count, retained legacy NULL provenance/quality, and returned `OVERALL OK` from `scripts/verify_schema.sql`. Full commands, raw outputs, `\d event_records`, SQL average evidence, and hashes are in [`DAY3_MIGRATION_REHEARSAL.md`](DAY3_MIGRATION_REHEARSAL.md).
-
-The provided H0 snapshots and final post-migration API response files had matching SHA-256 values for dashboard, alerts, and incidents. `scripts/compare_api_snapshots.py` returned `RESULT differences=0 tolerance_only=0` for all three. No fields, timestamps, or time-dependent values were excluded. The earlier reported `avg_zone_temp` alternate representation differed by `3.5527136788005009e-15 C`; PostgreSQL `AVG(DOUBLE PRECISION)` over 291 samples in the captured H0 window returned the exact snapshot value. The comparator retains `rel_tol=1e-12` and `abs_tol=1e-12`; tests prove that a 0.01 C difference fails and nonnumeric fields remain exact.
-
-## NOT TESTED / deferred
-
-- Successful live Ollama inference: the isolated Qwen pull reached 99% then failed with `dial tcp 104.18.17.170:443: i/o timeout`; follow-up `ollama list` was empty and no live response was claimed. Rerun `docker compose --env-file /private/tmp/anzma-phase0-closure/.env -p anzma-phase0-closure -f deploy/compose/docker-compose.yml run --rm -T ollama-init`, then `docker exec -e OLLAMA_HOST=http://ollama:11434 -e OLLAMA_TIMEOUT=120 anzma-phase0-closure-api-1 python tests/scenarios/e2e_s1.py --build --llm`.
-- Clean Git clone of the final closure tree: not possible without a commit, which was prohibited. The current worktree itself was built into a new isolated Compose project; the prior clean clone at `07bf77e` predates these changes.
-- Human browser visual acceptance.
-- Shared/live database migration and production backup/restore.
-- Real vendor/simulator connector, freshness/gap job, and retention policy: deferred to Phase 1.
+Run the integration suite only when its configured isolated test database is available; it creates and removes test data in that database. The live command above is a reproduction attempt, not a passing acceptance result.

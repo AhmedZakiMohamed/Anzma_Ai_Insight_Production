@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT)
 from app.adapters.database import db_adapter as da
+from app.adapters.model_providers.ollama_provider import OllamaProvider
 CHECKS = []
 
 
@@ -181,7 +182,8 @@ def main():
     # ---------------------------------------------------------------- explanation, grounding check, recommendation
     section("5. Explanation, grounding check, recommendation" + (" (live model requested)" if args.llm else " (fallback path)"))
     first = next(a for a in s1 if a["rule_id"] == "HVAC_HIGH_TEMP")
-    out = pipeline.explain_alert(cur, first["alert_id"], use_llm=args.llm)
+    provider = OllamaProvider.from_env() if args.llm else None
+    out = pipeline.explain_alert(cur, first["alert_id"], use_llm=args.llm, provider=provider)
     conn.commit()
     v = out["validation"]
     print(f"  ai_source={out['ai_source']}  model_used={out['model_used']}  data_sufficiency={out['data_sufficiency']}")
@@ -192,13 +194,14 @@ def main():
     print(f"  answer: {out['answer']}")
     for lim in out["limitations"]:
         print(f"  limitation: {lim}")
-    print("  recommendations (approved playbook actions only):")
+    print("  recommendations (provisional unless backed by an approval record):")
     for r in out["recommendations"]:
-        print(f"    P{r['priority']} {r['action_id']:<15} [{r['status']}, {r['approver']}]  {r['text']}")
+        approver = f"{r['approver']} / {r['approval_reference']}" if r.get("approver") and r.get("approval_reference") else "approval not recorded"
+        print(f"    P{r['priority']} {r['action_id']:<15} [{r['status']}, {approver}]  {r['text']}")
         print(f"         because: {'; '.join(r['basis'])}   evidence: {', '.join(r['evidence_refs'][:4])}...")
     check("the answer is grounding_supported (grounding only; not a semantic check)", v["status"] == "grounding_supported")
-    check("recommendations exist, come from the approved playbook and cite the evidence",
-          bool(out["recommendations"]) and all(r["derived_by"] == "PLAYBOOK" and r["status"] == "approved"
+    check("recommendations exist, are labeled provisional without an approval record and cite the evidence",
+          bool(out["recommendations"]) and all(r["derived_by"] == "PLAYBOOK" and r["status"] == "provisional"
                                                  and r["evidence_refs"] for r in out["recommendations"]))
     if args.llm:
         check("live model path used (ai_source=llm) or the fallback is stated", out["ai_source"] == "llm" or

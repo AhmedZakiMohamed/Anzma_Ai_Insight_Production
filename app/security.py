@@ -88,6 +88,8 @@ def token_from_authorization(value: str | None) -> str | None:
 
 def require_api_auth(request: Request) -> None:
     """FastAPI dependency for ordinary user/control API routes."""
+    if os.getenv("ANZMA_AUTH_DISABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
+        return
     authorization = request.headers.get("authorization")
     token = token_from_authorization(authorization)
     if not authorization:
@@ -99,6 +101,8 @@ def require_api_auth(request: Request) -> None:
 
 
 def socket_authenticate(auth: dict | None, cookie_header: str | None = None) -> bool:
+    if os.getenv("ANZMA_AUTH_DISABLED", "false").strip().lower() in {"1", "true", "yes", "on"}:
+        return True
     token = auth.get("token") if isinstance(auth, dict) else None
     if not token and cookie_header:
         try:
