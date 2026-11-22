@@ -32,6 +32,14 @@ docker compose --env-file .env -p "$PROJECT" -f "$COMPOSE_FILE" exec -T api pyth
 
 Set `PROJECT` and `COMPOSE_FILE` to the intended deployment. The API container receives its database connection settings from that Compose project. Never run this command against a shared/live database as part of disposable verification. Confirm the runner output and schema ledger afterward; if the pre-ledger baseline is ambiguous, stop rather than inventing ledger history.
 
+For migration 013 specifically, first run `SELECT building_id FROM buildings WHERE building_code IS NULL ORDER BY building_id;` and obtain stable codes from the site operator. Register every returned row before the runner:
+
+```sh
+docker compose --env-file .env -p "$PROJECT" -f "$COMPOSE_FILE" exec -T api \
+  python scripts/ingestion_admin.py register-building --building-id <id> --building-code <stable-code>
+docker compose --env-file .env -p "$PROJECT" -f "$COMPOSE_FILE" exec -T api python scripts/apply_migrations.py
+```
+
 ## Change log
 
 | File | What changed | Why | Commit |
@@ -53,3 +61,6 @@ Set `PROJECT` and `COMPOSE_FILE` to the intended deployment. The API container r
 | `tests/unit/test_asset_state_grounding.py`, `tests/integration/test_asset_state.py` | Added positive/negative grounding and citation-linked provenance assertions. | Prove new fields are supported and unsupported claims remain rejected. | `4b2d135` |
 | `docs/ASSET_STATE_DESIGN.md`, `docs/CANONICAL_DATA_MODEL.md`, `docs/PHASE1_STATUS.md`, `KNOWN_ISSUES.md`, `docs/CHANGE_COORDINATION.md` | Recorded approved G3 decisions, current semantics, evidence, limitations, and corrected `LOST` terminology. | Keep implementation and operator-facing design records aligned. | This documentation commit |
 | `KNOWN_ISSUES.md`, `docs/PHASE1_STATUS.md`, `docs/CHANGE_COORDINATION.md` | Added fresh-HEAD G3 regression comparison, H0-to-012 rehearsal counts, and the observed Ollama endpoint/model plus untested pull command. | Record reproducible evidence without editing Amr's DAY3 reports or changing deployment behavior. | This documentation commit |
+| `db/migrations/013_building_code_required.sql`, `scripts/verify_schema.sql` | Added NOT NULL and full unique building-code enforcement, an actionable preflight error, and schema/ledger checks. | Make building identity administrator-supplied and prevent ambiguous mappings. | `3888154` |
+| `tests/integration/test_multibuilding_g4.py` | Added disposable multi-building end-to-end proof for source-key isolation, mixed record ingestion, keepalive, liveness, freshness, gap, G3 state and fixed-window A parity. | Verify the existing contract and evaluators across two buildings without changing application code/API shape. | `e5606ae` |
+| `deploy/examples/g4_second_building.sql`, `docs/PHASE1_STATUS.md`, `KNOWN_ISSUES.md`, `docs/CHANGE_COORDINATION.md` | Added second-site SQL example, G4 evidence/status, exact pre-existing-database migration step and remaining dashboard/catalogue limitations. | Make the verified G4 setup repeatable and record the missing public building filter without expanding API scope. | This documentation commit |
