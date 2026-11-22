@@ -19,6 +19,24 @@ from app.adapters.database import db_adapter as da
 MIGRATIONS = ROOT / "db" / "migrations"
 LOCK_KEY = 718230641
 
+def _register_seed_building_codes(cur) -> int:
+    """Give the two repository seed buildings stable codes before migration 013.
+
+    These names are the explicit rows in db/init/anzma_schema_and_seed.sql. Only
+    NULL/blank codes are filled; operator-provided values are never overwritten.
+    Other buildings remain subject to migration 013's actionable preflight.
+    """
+    cur.execute(
+        """UPDATE buildings
+              SET building_code = CASE name
+                  WHEN 'Main Tower' THEN 'MAIN-TOWER'
+                  WHEN 'Data Center Annex' THEN 'DATA-CENTER-ANNEX'
+              END
+            WHERE name IN ('Main Tower', 'Data Center Annex')
+              AND (building_code IS NULL OR btrim(building_code) = '')"""
+    )
+    return cur.rowcount
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -46,6 +64,10 @@ def main() -> int:
                         continue
                 else:
                     print("No schema_migrations ledger yet; applying additive migration 006 to create it.")
+                if version == "013_building_code_required":
+                    registered = _register_seed_building_codes(cur)
+                    if registered:
+                        print(f"REGISTERED {registered} seeded building code(s)")
                 cur.execute(path.read_text(encoding="utf-8"))
                 conn.commit()
                 exists = True
