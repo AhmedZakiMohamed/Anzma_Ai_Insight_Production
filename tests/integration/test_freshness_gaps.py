@@ -36,9 +36,9 @@ class FreshnessGapLifecycleTests(unittest.TestCase):
     def make_series(self, tag: str):
         suffix = uuid4().hex[:10]
         building = self.db.execute(
-            "INSERT INTO buildings(name,timezone,work_start_local,work_end_local,non_working_weekdays) "
-            "VALUES (%s,'Africa/Cairo','08:00','18:00',ARRAY[5,6]::smallint[]) RETURNING building_id",
-            (f"E4A {tag} {suffix}",),
+            "INSERT INTO buildings(name,building_code,timezone,work_start_local,work_end_local,non_working_weekdays) "
+            "VALUES (%s,%s,'Africa/Cairo','08:00','18:00',ARRAY[5,6]::smallint[]) RETURNING building_id",
+            (f"E4A {tag} {suffix}", f"E4A-BLD-{suffix}"),
         ).fetchone()[0]
         location = self.db.execute(
             "INSERT INTO locations(building_id,floor,name) VALUES (%s,0,%s) RETURNING location_id",

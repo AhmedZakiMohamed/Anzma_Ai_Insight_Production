@@ -33,10 +33,11 @@ class FreshnessAdminTests(unittest.TestCase):
         )
         suffix = uuid4().hex[:12]
         cls.building_name = f"E2 admin test {suffix}"
+        cls.building_code = f"E2-ADMIN-BLD-{suffix}"
         cls.asset_code = f"E2-ADMIN-{suffix}"
         cls.building_id = cls.db.execute(
-            "INSERT INTO buildings (name) VALUES (%s) RETURNING building_id",
-            (cls.building_name,),
+            "INSERT INTO buildings (name,building_code) VALUES (%s,%s) RETURNING building_id",
+            (cls.building_name, cls.building_code),
         ).fetchone()[0]
         cls.location_id = cls.db.execute(
             "INSERT INTO locations (building_id,floor,name) VALUES (%s,0,'E2 admin test') RETURNING location_id",

@@ -38,8 +38,8 @@ class SourceLivenessTests(unittest.TestCase):
 
     def make_world(self, groups: tuple[int, ...] = (1,)) -> list[dict]:
         suffix = uuid4().hex[:10]
-        building = self.db.execute("INSERT INTO buildings(name) VALUES (%s) RETURNING building_id",
-                                   (f"E4B-{suffix}",)).fetchone()[0]
+        building = self.db.execute("INSERT INTO buildings(name,building_code) VALUES (%s,%s) RETURNING building_id",
+                                   (f"E4B-{suffix}", f"E4B-BLD-{suffix}")).fetchone()[0]
         location = self.db.execute("INSERT INTO locations(building_id,floor,name) VALUES (%s,0,%s) RETURNING location_id",
                                    (building, f"E4B-{suffix}")).fetchone()[0]
         worlds = []
