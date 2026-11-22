@@ -2,6 +2,8 @@
 
 `scripts/backup_db.sh` writes a custom-format `pg_dump` archive plus SHA-256 and row-count sidecars. The output directory is protected with mode `700`; backup files use mode `600`. The script verifies each new archive with `pg_restore --list` before publishing it and prunes only old, checksum-valid backups with all expected sidecars.
 
+**Linux retention correction:** versions before commit `18ac4d0` used BSD `stat -f` before GNU `stat -c`. On GNU/Linux, that produced filesystem-status text which could break the retention arithmetic; retention on Linux hosts was therefore broken. The corrected script tries GNU first, accepts only numeric mtimes, then tries BSD, and skips a file with a warning if neither result is valid. Invalid mtimes never trigger deletion.
+
 **One backup has passed restore verification:** `anzma_20261119_145637.dump`; see [`RESTORE_RUNBOOK.md`](RESTORE_RUNBOOK.md) for the recorded scratch run. Other backups remain UNVERIFIED until individually restored and checked. Archive listing and a matching checksum alone do not prove a restore works.
 
 ## Usage and settings
