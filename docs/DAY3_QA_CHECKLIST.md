@@ -1,7 +1,7 @@
 # Day 3 Independent QA Checklist
 
 **Purpose:** Let a reviewer who did not build the feature reproduce the installation and functional checks, inspect their evidence, and record a clear pass/fail result.
-**Current source base:** `455a185afda5704b83c2b1b2223e63529de06cef` on `main`. The present checkout is dirty; do not call this hash the release-candidate commit. Repeat these steps against the final clean commit before acceptance.
+**Application code to reproduce:** `60579a0f4029c4f3b49376abc338d9f34baac0c3` on `main`. This is not yet designated as the release candidate. Repeat these steps against the final reviewed commit before acceptance.
 
 ## 1. Record the test environment
 
@@ -55,7 +55,8 @@ docker exec anzma-core-api-1 python /app/tests/scenarios/e2e_s1.py --build --llm
 - [ ] Unit suite passes on the final commit.
 - [ ] Frontend API suite passes on the final commit.
 - [ ] Fallback scenario passes with the model unavailable; evidence references resolve.
-- [ ] Live scenario produces an actual model answer with a model identifier. A test that returns fallback does **not** pass live-AI acceptance even if its general scenario assertions pass.
+- [ ] Record the operator-reported successful Qwen browser chat separately, including the visible source/model label and response evidence.
+- [ ] Live S1 alert-explanation scenario produces an actual model answer with a model identifier. A test that returns fallback does **not** pass this specific live alert-explanation check even if its general scenario assertions pass.
 - [ ] Confirm isolated integration/E2E data was not written into the production `anzma` database.
 - [ ] Run the remaining approved regression suites on the final commit; historical pre-change counts are not substitutes.
 
@@ -67,6 +68,7 @@ docker exec anzma-core-api-1 python /app/tests/scenarios/e2e_s1.py --build --llm
 - [ ] Verify units from stored values through dashboard presentation, especially `bandwidth_util` in `%`.
 - [ ] Confirm current faults, recovery, historical incidents, stale/missing, and unknown are not conflated.
 - [ ] For live AI, record model ID, source measurements, grounding result, and recommendations; verify each against source evidence.
+- [ ] Do not treat a successful chatbot response as proof that the separate S1 alert-explanation path passed; record evidence for both paths.
 - [ ] Disable/unavailable model and repeat the same scenario; confirm deterministic fallback and its source label.
 - [ ] Confirm provisional recommendations are not presented as formally approved without a real approver and approval reference.
 - [ ] Obtain engineering’s written decision before changing bandwidth thresholds.

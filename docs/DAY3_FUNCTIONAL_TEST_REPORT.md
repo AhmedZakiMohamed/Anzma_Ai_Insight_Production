@@ -2,12 +2,12 @@
 
 **Report date:** 22 November 2026
 **Product:** Anzma AI Insight Core v0.1 — Consolidated Working Release
-**Checkout:** `main`, source base `455a185afda5704b83c2b1b2223e63529de06cef`
-**Release candidate:** Not created. The checkout contains uncommitted changes; this hash identifies the starting commit, not the tested final tree.
+**Validated application code commit:** `60579a0f4029c4f3b49376abc338d9f34baac0c3` on `main`
+**Release candidate:** Not designated. This commit contains the application changes described here, but full acceptance remains open; see the outstanding items below.
 
 ## Executive result
 
-The operator reports that the browser workflow is working and has completed the requested dashboard demonstration. The current checkout has also passed the latest recorded backend unit and frontend API suites, a deterministic-fallback S1 scenario, and a live-model S1 attempt that safely fell back. The live Qwen acceptance is **not passed**: the model did not return within either the default or extended request window. A video recording has not been provided or found in the repository, so the demonstration evidence is outstanding for independent review.
+The operator reports that the browser workflow is working and that Qwen successfully responded in the browser chat. The automated S1 alert-explanation scenario is a separate path: both recorded live-model attempts returned fallback after Qwen did not answer within the request window. Therefore, browser chat success is recorded as **operator-confirmed**, while the automated S1 live alert-explanation result remains **not passed**. A recording or response metadata was not provided for independent review, so the browser Qwen source/model label still needs to be captured in the demonstration evidence.
 
 This is a working validation report, not a release sign-off. The reports and evidence are tied to the source base above, but the final dirty worktree has no immutable commit identifier.
 
@@ -29,9 +29,10 @@ This is a working validation report, not a release sign-off. The reports and evi
 | Acknowledge and resolve incident | Operator reports passed | Browser demonstration reported complete; no recording artifact available for independent confirmation. |
 | Verify counters update | Operator reports passed | Browser demonstration reported complete; no recording artifact available for independent confirmation. |
 | Apply system/time filters and verify consistency | Operator reports passed | Browser demonstration reported complete; no recording artifact available for independent confirmation. |
-| Ask assistant an operational question and inspect references | Partially verified | Fallback produced an explanation with available supporting evidence. A successful live Qwen answer was not obtained. |
+| Ask assistant an operational question and inspect references | Partially verified | Operator confirmed the browser chat returned a successful Qwen response. Inspecting its source/model metadata and supporting references still needs to be captured for independent review. This is distinct from the S1 alert-explanation path below. |
 | Distinguish faults, recovered, historical, unavailable data | Operator reports passed; data checks partial | Current dashboard distinguishes warning/critical/no-data and freshness. Full browser recording is still needed for review. |
-| Live AI explanation from Qwen with model/source/grounding/recommendations | **Not passed** | Live S1 requests returned `ai_source=fallback`, `model_used=None`. Ollama logs show model load exceeded the request window and the client request was cancelled. |
+| Browser chat response from Qwen | **Operator-confirmed passed** | User reported that Qwen worked successfully in browser chat. No captured source/model metadata was provided with this report. |
+| S1 live alert explanation from Qwen | **Not passed** | The separate live S1 requests returned `ai_source=fallback`, `model_used=None`. Ollama logs show model load exceeded the request window and the client request was cancelled. |
 | Same scenario with model disabled / deterministic fallback | **Passed** | `tests/scenarios/e2e_s1.py --build`: 14/14 checks passed; all 14 evidence references resolved. |
 
 ## Recorded checks on the current working tree
@@ -53,10 +54,11 @@ The current work makes corrective recommendations provisional unless a real appr
 ## Outstanding before acceptance
 
 1. Diagnose Ollama model-load latency and verify whether Docker Desktop passes the host GPU through to the Ollama container. Do not treat the host GTX 1650 as proof that the container is using it.
-2. Repeat the same live-Qwen S1 scenario and record model identifier, source measurements, grounding result, answer, and recommendations only after a real model response is returned.
-3. Supply and review one continuous browser recording covering the required workflow and the live/fallback AI paths as required by the CEO acceptance criteria.
-4. Rerun the full approved regression suite against the final tree, record results, and tie the release package to a new clean Git commit.
-5. Have an independent QA reviewer follow `DAY3_QA_CHECKLIST.md`.
+2. Capture the browser chat's Qwen source/model identifier and response evidence in the continuous recording.
+3. Repeat the live-Qwen S1 alert-explanation scenario and record model identifier, source measurements, grounding result, answer, and recommendations after a real model response is returned.
+4. Supply and review one continuous browser recording covering the required workflow and both distinct AI paths as required by the CEO acceptance criteria.
+5. Rerun the full approved regression suite against the final tree, record results, and tie the release package to a new clean Git commit.
+6. Have an independent QA reviewer follow `DAY3_QA_CHECKLIST.md`.
 
 ## Reproduction commands
 

@@ -1,14 +1,14 @@
 # Day 3 Known Issues and Open Items
 
 **Updated:** 22 November 2026
-**Checkout:** `main` at source base `455a185afda5704b83c2b1b2223e63529de06cef`; worktree is modified and uncommitted.
-**Release status:** Not ready for final Day 3 acceptance. No release-candidate commit has been created.
+**Validated application code commit:** `60579a0f4029c4f3b49376abc338d9f34baac0c3` on `main`.
+**Release status:** Not ready for final Day 3 acceptance. The code commit exists but is not designated as the release candidate.
 
 ## High-priority acceptance gaps
 
 | Priority | Issue | Impact | Required resolution |
 |---|---|---|---|
-| High | Live Qwen inference has not completed successfully in the S1 scenario. | The live AI acceptance path cannot be demonstrated. Runs returned fallback with `model_used=None`. | Diagnose Ollama load latency and Docker GPU access; rerun and inspect a real model response. Keep deterministic fallback available. |
+| High | The scripted S1 live alert-explanation path did not complete successfully. | Those runs returned fallback with `model_used=None`. The operator separately confirmed that Qwen answered successfully in browser chat, but the response metadata/recording was not supplied for independent review. | Preserve both results as separate paths. Capture the browser chat's source/model label, diagnose the S1 alert-path latency, and rerun that scenario with model/evidence details. Keep deterministic fallback available. |
 | High | No continuous browser demonstration recording has been supplied for review. | The operator reports the browser workflow works, but the CEO’s recorded-demo acceptance cannot be independently checked. | Record and provide one continuous browser run covering dashboard, incident actions/counters, filters, assistant, and supporting evidence. |
 | High | No final release-candidate commit exists; source tree has uncommitted modifications. | Results are not bound to a reproducible immutable code revision. | Review all changes, run the approved regression suite, commit the final tree, and record the exact commit in all release artifacts. |
 

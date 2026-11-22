@@ -1,8 +1,8 @@
 # Day 3 Deployment Verification
 
 **Report date:** 22 November 2026
-**Checkout:** `main`, source base `455a185afda5704b83c2b1b2223e63529de06cef`
-**Status:** Local Compose stack is operational. Clean database/checkout installation was rehearsed. A clean model-volume provisioning run and independent-machine installation remain unverified. No release-candidate commit has been created.
+**Validated application code commit:** `60579a0f4029c4f3b49376abc338d9f34baac0c3` on `main`
+**Status:** Local Compose stack is operational. Clean database/checkout installation was rehearsed. A clean model-volume provisioning run and independent-machine installation remain unverified. This commit is not designated as a release candidate because acceptance work remains open.
 
 ## Supported local startup used for this verification
 
@@ -30,7 +30,8 @@ The readiness probe returned HTTP 200 with `{"status":"ready","database":"up"}`.
 | API/database readiness | Verified | `/ready` returned 200 and database status `up`. DB container reported healthy. |
 | Freshness worker | Running when the `freshness` profile is enabled | Existing service; no external sensor source has been connected. |
 | Deterministic AI fallback | Verified | S1 fallback path succeeded with all 14 evidence links resolved. |
-| Live model inference | Not verified successfully | Model load exceeded the request timeout in two live attempts; application fell back. |
+| Browser chat using Qwen | Operator-confirmed successful | Operator reported a successful Qwen response in browser chat; model/source metadata was not captured in the evidence package. |
+| S1 live alert-explanation inference | Not verified successfully | This separate scripted path exceeded the request window in two attempts and used fallback. |
 
 ## Installation rehearsal
 
@@ -43,20 +44,21 @@ Limit: the rehearsal reused an already-provisioned Ollama model volume to avoid 
 - Main Compose project and existing user ports were retained. Do not start a second project against the same host ports.
 - The S1 tests used a temporary `anzma_e2e` database in the running PostgreSQL container and removed it after testing. The application’s `anzma` database was not the S1 test target.
 - The dashboard’s current operational data is seed/legacy data. There is no registered live ingestion source or connected external building sensor in this verification.
-- The Compose Ollama service is healthy, but that health status proves server availability, not that Qwen can complete inference promptly.
+- The Compose Ollama service is healthy. The operator reports that Qwen answered successfully in browser chat; service health alone does not prove model use, and the response's model/source metadata was not captured for independent review.
+- The scripted S1 alert-explanation path remains unresolved: it exceeded the request window and used fallback in both recorded attempts. This does not negate the separate browser-chat success.
 - Windows host reported an NVIDIA GeForce GTX 1650 with 4 GB. GPU passthrough to Docker/Ollama was not verified; Ollama logs showed CPU work during the long model load.
 
 ## External Ollama configuration
 
-The repository can be configured to call an Ollama endpoint outside the Compose-managed runtime through environment configuration. This is a supported deployment option only when the endpoint is reachable from the API container, the requested model is installed there, and network/security settings permit access. This environment’s external-Ollama path was not independently tested. The Compose-managed Ollama service remains the verified runtime availability path; live inference still needs resolution.
+The repository can be configured to call an Ollama endpoint outside the Compose-managed runtime through environment configuration. This is a supported deployment option only when the endpoint is reachable from the API container, the requested model is installed there, and network/security settings permit access. This environment’s external-Ollama path was not independently tested. The Compose-managed Ollama service is present; the operator reports successful Qwen use in browser chat, while the separate S1 alert-explanation inference still needs resolution.
 
 ## Known installation limitations
 
 1. A completely empty Ollama volume/model-download path has not been rehearsed end to end.
-2. Live Qwen inference has not passed; repeated tests returned deterministic fallback after model loading exceeded the request window.
+2. The scripted S1 live alert-explanation path returned deterministic fallback after model loading exceeded the request window, even though browser chat was reported successful. Record and independently review both paths separately.
 3. Docker GPU access is unverified. Do not infer container GPU acceleration from the Windows host GPU listing.
 4. No independent clean-machine install or recorded demonstration was supplied for review.
-5. The local worktree contains uncommitted source changes, so no reproducible release-candidate commit is identified yet.
+5. Commit `60579a0` identifies the current application source, but it is not designated as the final release candidate because acceptance work remains open.
 
 ## Reproduction and operator commands
 

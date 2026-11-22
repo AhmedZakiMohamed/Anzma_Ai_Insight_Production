@@ -1,7 +1,7 @@
 # Day 3 Operational Data Validation
 
 **Report date:** 22 November 2026
-**Checkout:** `main`, source base `455a185afda5704b83c2b1b2223e63529de06cef`
+**Validated application code commit:** `60579a0f4029c4f3b49376abc338d9f34baac0c3` on `main`
 **Purpose:** Record the known checks and open validation limits for the current local working release. This is not a claim that live vendor/sensor data is connected.
 
 ## Data source and interpretation
@@ -48,7 +48,8 @@ The earlier database review found a unique alert constraint/index and no duplica
 ## AI explanation and recommendation validation
 
 - Deterministic fallback completed the S1 scenario and retained supporting evidence links (14/14 resolved).
-- Live-Qwen S1 attempts did not produce a model answer. They returned `ai_source=fallback` and `model_used=None`; these results do not satisfy live AI acceptance.
+- The operator reports that Qwen answered successfully in browser chat. The chat response's model/source metadata was not supplied for independent verification.
+- Separate live-Qwen S1 alert-explanation attempts returned `ai_source=fallback` and `model_used=None`. This scripted alert path was not demonstrated successfully and should not be conflated with the reported browser-chat success.
 - Current safety behavior marks corrective actions provisional unless a real approver and approval reference are present; draft actions are excluded from recommendations.
 - The grounding indicator reports the configured evidence checks. It is not proof of semantic correctness.
 - The unsupported-causality validator is a narrow phrase guard, not a comprehensive fact checker. AI output still requires evidence inspection and engineering review.
@@ -60,7 +61,8 @@ The earlier database review found a unique alert constraint/index and no duplica
 | Unit suite `test_day2_ahmed.py` | 29/29 passed | Latest recorded run after Task 4 safety changes. |
 | Frontend API suite `test_frontend_api.py` | 42/42 passed | Latest recorded run after Task 4 changes with test auth environment set. |
 | S1 fallback scenario | 14/14 passed | Isolated test DB, later dropped. |
-| S1 live-model request | Fell back | Not a live-Qwen pass, even though scenario assertions accepted fallback. |
+| Browser chat using Qwen | Operator-reported successful | Model/source metadata and recording were not supplied for independent verification. |
+| S1 live-model alert explanation | Fell back | This distinct path is not a live-Qwen pass, even though scenario assertions accepted fallback. |
 | Other suites | 43/43 and 23/23 passed | Historical runs before latest Task 4 edits; rerun before release. |
 
 ## Open work before sign-off
@@ -68,6 +70,6 @@ The earlier database review found a unique alert constraint/index and no duplica
 1. Re-query event/telemetry/alert/incident counts and evidence references on the final immutable release-candidate database snapshot.
 2. Recheck dashboard state and time filters through the browser recording.
 3. Confirm the bandwidth thresholds and obtain a written approval artifact; do not silently modify behavior.
-4. Complete a live-Qwen response and inspect its model ID, input measurements, grounding evidence, and recommendations.
+4. Capture and inspect the browser chat's model/source label and answer evidence; separately complete the live-Qwen S1 alert explanation and inspect its model ID, input measurements, grounding evidence, and recommendations.
 5. Have an independent reviewer compare displayed units and states with stored records.
 6. Keep external connector and live-sensor claims out of the release notes until a real source is configured and verified.
