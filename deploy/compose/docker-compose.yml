@@ -19,6 +19,7 @@ services:
       - ../../db/migrations/009_freshness_expectations.sql:/docker-entrypoint-initdb.d/08-freshness-expectations.sql:ro
       - ../../db/migrations/010_data_gap_lifecycle.sql:/docker-entrypoint-initdb.d/09-data-gap-lifecycle.sql:ro
       - ../../db/migrations/011_source_liveness.sql:/docker-entrypoint-initdb.d/10-source-liveness.sql:ro
+      - ../../db/migrations/012_asset_state_shadow.sql:/docker-entrypoint-initdb.d/11-asset-state-shadow.sql:ro
     ports:
       - "${DB_BIND_ADDRESS:-127.0.0.1}:${DB_HOST_PORT:-5432}:5432"
     healthcheck:

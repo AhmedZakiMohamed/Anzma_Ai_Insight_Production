@@ -434,7 +434,7 @@ def _monitored_assets(conn, params):
 
 
 
-def _asset_status_counts(conn, params):
+def _asset_status_rows(conn, params):
     """
     Return status counts for the filtered assets.
 
@@ -587,16 +587,20 @@ def _asset_status_counts(conn, params):
 
 
 
+    return rows
+
+
+def _asset_status_counts(conn, params):
     counts = {status: 0 for status in STATUS_ORDER}
-
-
-
-    for row in rows:
+    for row in _asset_status_rows(conn, params):
         counts[row["status"]] += 1
-
-
-
     return counts
+
+
+def asset_status_rows(conn, start, end):
+    """Return the current dashboard status per asset for parity/shadow evaluation."""
+    return _asset_status_rows(conn, {"system": None, "building": None, "start": start, "end": end,
+                                     "paired_types": [event for pair in FAULT_RECOVERY_PAIRS for event in pair]})
 
 
 

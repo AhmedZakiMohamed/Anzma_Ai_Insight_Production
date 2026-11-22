@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT))
 
 from app.adapters.database import db_adapter as da
 from app.services.freshness import MAX_ERROR_CHARS, run_once
+from app.services import asset_state as asset_state_service
 
 LOGGER = logging.getLogger("anzma.freshness.job")
 DEFAULT_INTERVAL_SECONDS = 60
@@ -62,6 +63,20 @@ def run_pass(
     started = monotonic()
     now = clock()
     result = run_once(conn, now)
+    try:
+        # run_once commits freshness before the shadow stage begins. The shadow
+        # evaluator owns its transaction; its failure cannot roll back freshness.
+        asset_state_service.run_once(conn, result["evaluated_at"])
+    except Exception as exc:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        LOGGER.error(json.dumps({
+            "event": "ASSET_STATE_PASS_FAILED",
+            "evaluated_at": _iso_utc(result["evaluated_at"]),
+            "error": f"{type(exc).__name__}: {exc}"[:MAX_ERROR_CHARS],
+        }, separators=(",", ":")))
     duration = max(0.0, monotonic() - started)
     return {
         "event": "FRESHNESS_PASS",
