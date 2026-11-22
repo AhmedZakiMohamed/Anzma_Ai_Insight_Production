@@ -1,8 +1,8 @@
 # Phase 1 implementation status
 
-**Branch:** `feature/ingestion-foundation`
-**Baseline commit:** `263f09d` (`fix: polish freshness panel display`)
-**Status date:** 2026-11-20
+**Branch:** `main`
+**Baseline commit:** `76f0169` (`test: keep freshness fixtures after migration defaults`)
+**Status date:** `2026-11-22`
 **Rule:** one numbered package per session; no push/tag; never use the shared database or running shared stacks.
 
 This is the execution tracker, not a claim that Phase 1 is production-ready. “DONE” means the package has code, its requested disposable-environment evidence, and a committed result. The human retains all approval decisions listed below.
@@ -54,7 +54,7 @@ This is the execution tracker, not a claim that Phase 1 is production-ready. “
 
 ### G8 — AI reliability and provider interface
 
-**Status: PARTIAL.** Grounding checks and fallback exist; a local live run with `llama3.2:3b` passed in E5 verification. Only the Ollama client is implemented; provider selection, freshness/state/data-sufficiency integration after G2/G3, and regression on those new paths remain.
+**Status: PARTIAL; Amr overlap recorded.** Amr's `60579a0`/`bdd8d3d` work adds the `ModelProvider` interface, Ollama adapter, and grounding/validation foundation. This baseline confirms the provider unit tests and existing deterministic explanation paths. In the isolated Task A stack, the requested S1 `--llm` observation used `OLLAMA_HOST=http://ollama:11434`, model `qwen2.5:7b`, timeout 120 seconds; the isolated Ollama `/api/tags` returned 200 with an empty model list and its `/api/chat` response was HTTP 404 `model 'qwen2.5:7b' not found`. S1 returned `ai_source=fallback`, `model_used=None`, and the documented unavailable-model limitation. This confirms missing model in the isolated Ollama volume as the cause for this run; it does not establish a failure of Amr's provider interface. Provider selection and G3 evidence/sufficiency integration remain.
 
 ### G9 — deployment and operations
 
@@ -62,7 +62,7 @@ This is the execution tracker, not a claim that Phase 1 is production-ready. “
 
 ### G10 — 1.1 security remainder
 
-**Status: PARTIAL.** Existing auth/CORS/rate/audit/TLS work is listed above. Remove the default PostgreSQL host-port publication; verify repository secrets and `.env.example`; verify body limits and TLS guidance; add the security checklist. Update `AUTH_OPTIONS.md` with the migration recommendation and stop for the human's enterprise identity decision; do not choose it.
+**Status: PARTIAL; Amr overlap recorded.** Amr's security/Compose work includes the `ANZMA_AUTH_DISABLED` flag and deployment environment changes. Keep this flag, existing healthchecks, and documented token/provider env names stable. Existing auth/CORS/rate/audit/TLS work is listed above. Remove the default PostgreSQL host-port publication; verify repository secrets and `.env.example`; verify body limits and TLS guidance; add the security checklist. Update `AUTH_OPTIONS.md` with the migration recommendation and stop for the human's enterprise identity decision; do not choose it.
 
 ### G11 — documentation consolidation
 
@@ -83,3 +83,4 @@ This is the execution tracker, not a claim that Phase 1 is production-ready. “
 - **2026-11-20 — G1 completed:** code commit `d39c582`, docs commit `ef8cde0`.
 - **2026-11-20 — G2 completed:** code/config commit `46b1099`, integration/docs commit `8517066`. G2 database work used only the disposable E3 PostgreSQL container and isolated `anzma_e*_g2_*` databases. During this work, the shared worktree moved to `main` with many staged changes; those were left untouched, and status tracking was finished in an isolated worktree on the feature branch.
 - **2026-11-21 — G3 design drafted:** `docs/ASSET_STATE_DESIGN.md`; docs-only proposal, awaiting human approval. No tests run because this is the required design gate.
+- **2026-11-22 — Task A baseline on `main`:** code/test baseline `76f0169`, isolated Compose project `anzma-taska-current-20261122` only. Unit suite 75 tests (1 skipped), data integrity 23/23, frontend/API 42/42, day2 intelligence 43/43, default S1 E2E 14/14, chat consistency 31/31, model-provider 3/3, combined freshness schema/admin/job/gaps/liveness/API 36/36. S1 `--llm` observation passed its scenario checks 15/15 but used deterministic fallback because the isolated Ollama volume had no models (see G8). No shared stack/DB was used. Current `main` includes local commits `18ac4d0`, `dfc8ddf`, `0476405`, `e3a2d3a`, and `76f0169`; no push or tag was made.
