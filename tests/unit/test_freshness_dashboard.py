@@ -5,6 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 HTML = (ROOT / "app/dashboard/static/dashboard.html").read_text(encoding="utf-8")
+HTML_NORMALIZED = re.sub(r"\s+", " ", HTML)
 
 
 class FreshnessDashboardTests(unittest.TestCase):
@@ -18,7 +19,7 @@ class FreshnessDashboardTests(unittest.TestCase):
     def test_freshness_panel_is_additive_and_describes_evidence_only(self):
         self.assertIn('<section id="freshnessPanel"', HTML)
         self.assertIn("Data freshness &amp; sources", HTML)
-        self.assertIn("Seed/legacy series have no source or building code; the rest of the dashboard measures time from the latest stored record, this panel from the current clock.", HTML)
+        self.assertIn("Seed/legacy series have no source or building code; the rest of the dashboard measures time from the latest stored record, this panel from the current clock.", HTML_NORMALIZED)
         self.assertIn("Source SILENT and gap SOURCE_SUSPECTED labels are evidence", HTML)
         self.assertIn('api("/api/v1/freshness?limit=100")', HTML)
         self.assertIn('api("/api/v1/sources/liveness?limit=100")', HTML)
@@ -45,9 +46,9 @@ class FreshnessDashboardTests(unittest.TestCase):
                 self.assertIn(escaped, HTML)
 
     def test_freshness_and_gap_tables_scroll_at_narrow_width(self):
-        self.assertIn(".freshness-scroll { max-width: 100%; min-width: 0; overflow-x: auto;", HTML)
-        self.assertIn(".freshness-table { width: max-content; min-width: 100%;", HTML)
-        self.assertIn('<div class="freshness-scroll">\n            <table class="freshness-table">', HTML)
+        self.assertIn(".freshness-scroll { max-width: 100%; min-width: 0; overflow-x: auto;", HTML_NORMALIZED)
+        self.assertIn(".freshness-table { width: max-content; min-width: 100%;", HTML_NORMALIZED)
+        self.assertIn('<div class="freshness-scroll"> <table class="freshness-table">', HTML_NORMALIZED)
         self.assertEqual(HTML.count('<div class="freshness-scroll">'), 2)
         self.assertIn("Last observed (UTC)", HTML)
         self.assertIn("Gap start (UTC)", HTML)

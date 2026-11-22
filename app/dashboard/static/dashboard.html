@@ -172,18 +172,78 @@
       margin: 8px 0;
     }
 
-    .freshness-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 14px; }
-    .freshness-grid > div { min-width: 0; }
-    .freshness-scroll { max-width: 100%; min-width: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .freshness-table { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 13px; }
-    .freshness-table th, .freshness-table td { padding: 7px 9px; border-bottom: 1px solid var(--line, #e3e6ea); text-align: left; white-space: nowrap; }
-    .freshness-note { color: var(--muted, #667085); font-size: 13px; }
-    #freshnessStaleBanner { padding: 9px 12px; border-radius: 7px; background: #fff2d7; color: #704b00; }
-    .liveness-card { border: 1px solid var(--line, #e3e6ea); border-radius: 8px; padding: 10px; margin: 0 0 9px; }
-    .liveness-card p { margin: 5px 0; font-size: 12px; overflow-wrap: anywhere; }
-    .tag.state-alive { background: #e3f4ea; color: #1e6b3f; }
-    .tag.state-silent { background: #fff2d7; color: #704b00; }
-    .tag.state-unknown, .tag.state-disabled { background: #eef0f3; color: #475467; }
+    .freshness-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+      gap: 14px;
+    }
+
+    .freshness-grid>div {
+      min-width: 0;
+    }
+
+    .freshness-scroll {
+      max-width: 100%;
+      min-width: 0;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .freshness-table {
+      width: max-content;
+      min-width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .freshness-table th,
+    .freshness-table td {
+      padding: 7px 9px;
+      border-bottom: 1px solid var(--line, #e3e6ea);
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    .freshness-note {
+      color: var(--muted, #667085);
+      font-size: 13px;
+    }
+
+    #freshnessStaleBanner {
+      padding: 9px 12px;
+      border-radius: 7px;
+      background: #fff2d7;
+      color: #704b00;
+    }
+
+    .liveness-card {
+      border: 1px solid var(--line, #e3e6ea);
+      border-radius: 8px;
+      padding: 10px;
+      margin: 0 0 9px;
+    }
+
+    .liveness-card p {
+      margin: 5px 0;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .tag.state-alive {
+      background: #e3f4ea;
+      color: #1e6b3f;
+    }
+
+    .tag.state-silent {
+      background: #fff2d7;
+      color: #704b00;
+    }
+
+    .tag.state-unknown,
+    .tag.state-disabled {
+      background: #eef0f3;
+      color: #475467;
+    }
   </style>
 </head>
 
@@ -253,17 +313,31 @@
 
     <section id="freshnessPanel" class="panel" aria-labelledby="freshnessTitle">
       <h3 id="freshnessTitle">Data freshness &amp; sources</h3>
-      <p class="freshness-note">Seed/legacy series have no source or building code; the rest of the dashboard measures time from the latest stored record, this panel from the current clock.</p>
+      <p class="freshness-note">Seed/legacy series have no source or building code; the rest of the dashboard measures
+        time from the latest stored record, this panel from the current clock.</p>
       <p id="freshnessSnapshot" class="freshness-note">Loading persisted freshness snapshot…</p>
-      <div id="freshnessStaleBanner" role="status" hidden>Snapshot is stale or unavailable; these values are the last persisted evaluation.</div>
-      <p id="freshnessEvidenceNote" class="freshness-note">Source SILENT and gap SOURCE_SUSPECTED labels are evidence; they do not confirm an equipment outage.</p>
+      <div id="freshnessStaleBanner" role="status" hidden>Snapshot is stale or unavailable; these values are the last
+        persisted evaluation.</div>
+      <p id="freshnessEvidenceNote" class="freshness-note">Source SILENT and gap SOURCE_SUSPECTED labels are evidence;
+        they do not confirm an equipment outage.</p>
       <div class="freshness-grid">
         <div>
           <h4>Series freshness</h4>
           <div id="freshnessCounts" aria-live="polite"></div>
           <div class="freshness-scroll">
-            <table class="freshness-table"><thead><tr><th>Building</th><th>Source</th><th>Asset</th><th>Metric</th><th>State</th><th>Last observed (UTC)</th></tr></thead>
-              <tbody id="freshnessRows"></tbody></table>
+            <table class="freshness-table">
+              <thead>
+                <tr>
+                  <th>Building</th>
+                  <th>Source</th>
+                  <th>Asset</th>
+                  <th>Metric</th>
+                  <th>State</th>
+                  <th>Last observed (UTC)</th>
+                </tr>
+              </thead>
+              <tbody id="freshnessRows"></tbody>
+            </table>
           </div>
         </div>
         <div>
@@ -273,8 +347,19 @@
       </div>
       <h4>Open data gaps</h4>
       <div class="freshness-scroll">
-        <table class="freshness-table"><thead><tr><th>Building</th><th>Source</th><th>Asset</th><th>Metric</th><th>Cause</th><th>Gap start (UTC)</th></tr></thead>
-          <tbody id="dataGapRows"></tbody></table>
+        <table class="freshness-table">
+          <thead>
+            <tr>
+              <th>Building</th>
+              <th>Source</th>
+              <th>Asset</th>
+              <th>Metric</th>
+              <th>Cause</th>
+              <th>Gap start (UTC)</th>
+            </tr>
+          </thead>
+          <tbody id="dataGapRows"></tbody>
+        </table>
       </div>
     </section>
 
@@ -358,7 +443,9 @@
 
     const state = {
       system: "",
-      hours: 24
+      hours: 24,
+      windowFrom: null,
+      windowTo: null
     };
 
     const charts = {};
@@ -391,6 +478,26 @@
         }
       );
     };
+    const inWindow = (first, last) => {
+      if (state.windowFrom == null) return true;
+      let start = first ? new Date(first).getTime() : Number.NaN;
+      let end = last ? new Date(last).getTime() : Number.NaN;
+      if (!Number.isFinite(start) && !Number.isFinite(end)) return false;
+      if (!Number.isFinite(start)) start = end;
+      if (!Number.isFinite(end)) end = start;
+      return end >= state.windowFrom &&
+        (state.windowTo == null || start <= state.windowTo);
+    };
+    const sysOf = a => String(a?.system_type ?? a?.system ?? a?.systemType ?? "")
+      .trim().toUpperCase().replace(/[\s-]+/g, "_");
+    const alertSystemLabel = alert => LABEL[sysOf(alert)] || alert.system_type || "Unknown system";
+    const alertEvidenceWindow = alert => {
+      const first = alert.first_ts ? fmtTime(alert.first_ts, true) : null;
+      const last = alert.last_ts && alert.last_ts !== alert.first_ts
+        ? fmtTime(alert.last_ts, true)
+        : null;
+      return [first, last].filter(Boolean).join(" – ") || "Unknown";
+    };
 
 
     /* =========================================================
@@ -413,8 +520,9 @@
 
         button.onclick = () => {
           if (state[key] === value) return;
-
           state[key] = value;
+          renderAlerts();
+          renderIncidentList();
           onPick();
         };
 
@@ -517,11 +625,9 @@
       `;
 
         button.onclick = () => {
-          state.system =
-            state.system === system.type
-              ? ""
-              : system.type;
-
+          state.system = state.system === system.type ? "" : system.type;
+          renderAlerts();
+          renderIncidentList();
           load();
         };
 
@@ -895,6 +1001,7 @@
       try {
 
         const [summary, trends, health] = await Promise.all([
+
           api("overview"),
           api("trends"),
           api("equipment-health")
@@ -904,6 +1011,11 @@
         if (requestId !== dashboardRequestId) {
           return;
         }
+
+        state.windowFrom = new Date(summary.window.from).getTime();
+        state.windowTo = new Date(summary.window.to).getTime();
+        renderAlerts();
+        renderIncidentList();
 
         $("ref").textContent =
           `Data window: ${fmtTime(summary.window.from, true)} to ${fmtTime(summary.window.to, true)} (the latest event in the database is treated as "now")`;
@@ -999,6 +1111,8 @@
     const AC = {
       alerts: [],
       max: 200,
+      sysById: new Map(),
+      loadError: false,
 
       filters: {
         severity: "",
@@ -1121,16 +1235,13 @@
     ========================================================= */
 
     const passes = alert => {
-
+      const system = sysOf(alert);
       return (
         String(alert.status || "OPEN").toUpperCase() !== "RESOLVED" &&
-        (!AC.filters.severity ||
-          alert.severity === AC.filters.severity) &&
-
-        (!AC.filters.system ||
-          alert.system_type === AC.filters.system)
+        (!AC.filters.severity || alert.severity === AC.filters.severity) &&
+        (!system || !state.system || system === state.system) &&
+        (!system || !AC.filters.system || system === AC.filters.system)
       );
-
     };
 
 
@@ -1139,6 +1250,16 @@
     ========================================================= */
 
     function renderAlerts() {
+
+      if (AC.loadError) {
+        $("acList").replaceChildren();
+        $("acCount").textContent = "—";
+        $("acEmpty").textContent = "Alerts could not be loaded. Use Refresh to retry.";
+        $("acEmpty").classList.add("show");
+        return;
+      }
+
+      $("acEmpty").textContent = "No alerts match the filters.";
 
       const list = AC.alerts.filter(passes);
 
@@ -1155,14 +1276,15 @@
         </span>
 
         <span class="al-time">
-          ${alert.first_ts
-          ? esc(fmtTime(alert.first_ts, true))
-          : ""}
+          ${alert.detected_ts
+          ? "Detected " + esc(fmtTime(alert.detected_ts, true))
+          : "Detection time unavailable"}
+          · Evidence window: ${esc(alertEvidenceWindow(alert))}
         </span>
 
         <span class="al-meta">
           Status: ${esc(alert.status || "OPEN")}
-          · ${esc(LABEL[alert.system_type] || alert.system_type)}
+          · ${esc(alertSystemLabel(alert))}
           · ${esc(alert.asset_name)}
 
           ${alert.zone
@@ -1341,6 +1463,9 @@
         return;
       }
 
+      AC.sysById.set(alert.id, sysOf(alert));
+      AC.loadError = false;
+
 
       // Prevent duplicate alerts
       AC.seen.add(alert.id);
@@ -1409,7 +1534,7 @@
 
       try {
 
-        const response = await fetch("/alerts?limit=50");
+        const response = await fetch("/alerts?limit=200");
 
         if (!response.ok) {
 
@@ -1420,10 +1545,10 @@
         }
 
         const data = await response.json();
-
-        const items = Array.isArray(data.items)
-          ? data.items
-          : [];
+        if (!data || !Array.isArray(data.items)) {
+          throw new Error("Alerts API response does not contain an items array.");
+        }
+        const items = data.items;
 
 
         // Sort newest first
@@ -1441,19 +1566,26 @@
 
         });
 
-
+        items.forEach(a => AC.sysById.set(a.id, sysOf(a)));
         const freshById = new Map(AC.alerts.map(alert => [alert.id, alert._fresh]));
         AC.alerts = items
           .filter(alert => alert.id != null)
           .slice(0, AC.max)
           .map(alert => ({ ...alert, _fresh: freshById.get(alert.id) || false }));
+        AC.loadError = false;
         AC.seen = new Set(AC.alerts.map(alert => alert.id));
 
 
         // Render initial alerts
         renderAlerts();
+        renderIncidentList();
 
       } catch (error) {
+
+        if (!AC.alerts.length) {
+          AC.loadError = true;
+          renderAlerts();
+        }
 
         console.error(
           "Failed to load initial alerts:",
@@ -1577,7 +1709,7 @@
     /* =========================================================
        Incidents: list, evidence, explanation, recommendations, lifecycle
     ========================================================= */
-    const INC = { selected: null };
+    const INC = { selected: null, items: [] };
     const SRC_LABEL = { llm: "AI model", fallback: "Deterministic fallback", rules: "Fixed rules" };
     const VAL_LABEL = {
       grounding_supported: ["ok", "Grounding checks passed"],
@@ -1599,29 +1731,79 @@
       try {
         const data = await jsonFetch("/incidents");
         const items = data.incidents || [];
-        const openN = items.filter(i => i.status !== "resolved").length;
-        $("incCount").textContent = openN === items.length ? String(items.length) : `${openN} open / ${items.length} total`; $("incEmpty").style.display = items.length ? "none" : "block";
-        $("incList").innerHTML = items.map(i => `
-          <li class="${esc(i.severity.toUpperCase())} ${esc(i.status.toLowerCase())}" data-id="${esc(i.id)}"
-              aria-selected="${INC.selected === i.id}">
-            <div class="t">
-              ${i.status === "resolved"
-                ? '<span class="tag status-resolved">RESOLVED</span>'
-                : `<span class="tag ${esc(i.severity.toUpperCase())}">${esc(i.severity.toUpperCase())}</span>
-                   <span class="tag">${esc(i.status.toUpperCase())}</span>`}${esc(i.title)}
-            </div>
-            <div class="m">#${esc(i.id)} · ${esc(i.building)}, ${esc(i.zone)} ·
-              ${esc(fmtTime(i.first_ts, true))} to ${esc(fmtTime(i.last_ts, true))} ·
-              ${esc((i.alert_ids || []).length)} alert(s)</div>
-          </li>`).join("");
-        $("incList").querySelectorAll("li").forEach(li => {
-          li.onclick = () => selectIncident(Number(li.dataset.id));
-        });
+        INC.items = items;
+        $("incEmpty").style.display = items.length ? "none" : "block";
+        renderIncidentList();
       } catch (error) {
         console.error("Incidents:", error);
         $("incList").innerHTML = `<li>Could not load incidents (${esc(error.message)}).</li>`;
       }
     }
+    function linkedAlertsFor(incident) {
+      const byId = new Map((AC.alerts || [])
+        .filter(alert => alert?.id != null)
+        .map(alert => [String(alert.id), alert]));
+      return (Array.isArray(incident.alert_ids) ? incident.alert_ids : [])
+        .filter(id => id != null)
+        .map(id => byId.get(String(id)))
+        .filter(Boolean);
+    }
+    function alertDetectedAfterWindow(alert, now = Date.now()) {
+      if (state.windowTo == null || !alert?.detected_ts) return false;
+      const detectedAt = new Date(alert.detected_ts).getTime();
+      return Number.isFinite(detectedAt) &&
+        detectedAt > state.windowTo && detectedAt <= now;
+    }
+    function incMatches(i) {
+      const linkedAlerts = linkedAlertsFor(i);
+      if (state.system) {
+        const own = sysOf(i);
+        const systems = [own, ...linkedAlerts.map(sysOf), ...(Array.isArray(i.alert_ids) ? i.alert_ids : [])
+          .filter(id => id != null)
+          .map(id => AC.sysById.get(id) || AC.sysById.get(Number(id)))].filter(Boolean);
+        if (!systems.includes(state.system)) return false;
+      }
+      return inWindow(i.first_ts, i.last_ts) || linkedAlerts.some(alert => alertDetectedAfterWindow(alert));
+    }
+
+    function renderIncidentList() {
+      const unique = new Map();
+      for (const incident of INC.items || []) {
+        if (incident?.id != null && !unique.has(String(incident.id))) {
+          unique.set(String(incident.id), incident);
+        }
+      }
+      const all = [...unique.values()];
+      const items = all.filter(incMatches);
+      const openN = items.filter(i => i.status !== "resolved").length;
+      $("incCount").textContent = openN === items.length
+        ? String(items.length)
+        : `${openN} open / ${items.length} total`;
+
+      $("incList").innerHTML = items.map(i => `
+    <li class="${esc(i.severity.toUpperCase())} ${esc(i.status.toLowerCase())}" data-id="${esc(i.id)}"
+        aria-selected="${INC.selected === i.id}">
+      <div class="t">
+        ${i.status === "resolved"
+          ? '<span class="tag status-resolved">RESOLVED</span>'
+          : `<span class="tag ${esc(i.severity.toUpperCase())}">${esc(i.severity.toUpperCase())}</span>
+             <span class="tag">${esc(i.status.toUpperCase())}</span>`}${esc(i.title)}
+      </div>
+      <div class="m">#${esc(i.id)} · ${esc(i.building)}, ${esc(i.zone)} ·
+        ${esc(fmtTime(i.first_ts, true))} to ${esc(fmtTime(i.last_ts, true))} ·
+        ${esc((i.alert_ids || []).length)} alert(s)</div>
+    </li>`).join("") ||
+        (all.length ? "<li>No incidents match the current filters.</li>" : "");
+
+      $("incList").querySelectorAll("li[data-id]").forEach(li => {
+        li.onclick = () => selectIncident(Number(li.dataset.id));
+      });
+      if (INC.selected != null && !items.some(i => i.id === INC.selected)) {
+        INC.selected = null;
+        $("incDetail").hidden = true;
+      }
+    }
+
 
     async function selectIncident(id) {
       INC.selected = id;
