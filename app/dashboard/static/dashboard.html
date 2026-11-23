@@ -254,6 +254,9 @@
       <p id="ref">Loading data window…</p>
     </div>
     <div class="controls">
+      <select id="buildingFilter" aria-label="Building filter">
+        <option value="">All buildings</option>
+      </select>
       <div class="seg" id="sysFilter" role="group" aria-label="System filter"></div>
       <div class="seg" id="hoursFilter" role="group" aria-label="Time window"></div>
       <button id="refresh" type="button">Refresh</button>
@@ -442,6 +445,7 @@
     };
 
     const state = {
+      building: "",
       system: "",
       hours: 24,
       windowFrom: null,
@@ -559,17 +563,19 @@
        3. API Requests
     ========================================================= */
 
-    async function api(path) {
-      const query = new URLSearchParams({
-        hours: state.hours
-      });
-
-      if (state.system) {
-        query.set("system_type", state.system);
+    function apiPath(path) {
+      const dashboardPath = !path.startsWith("/");
+      const url = new URL(dashboardPath ? `/dashboard/${path}` : path, window.location.origin);
+      if (dashboardPath) {
+        url.searchParams.set("hours", state.hours);
+        if (state.system) url.searchParams.set("system_type", state.system);
       }
+      if (state.building) url.searchParams.set("building", state.building);
+      return `${url.pathname}${url.search}`;
+    }
 
-      const url = path.startsWith("/") ? path : `/dashboard/${path}?${query}`;
-      const response = await fetch(url);
+    async function api(path) {
+      const response = await fetch(apiPath(path));
 
       if (!response.ok) {
         throw new Error(`${path}: HTTP ${response.status}`);
@@ -1103,6 +1109,25 @@
       }
     }
 
+    async function loadBuildingOptions() {
+      try {
+        const response = await fetch("/dashboard/filters");
+        if (!response.ok) throw new Error(`Building filters: HTTP ${response.status}`);
+        const data = await response.json();
+        const select = $("buildingFilter");
+        for (const building of data.buildings || []) {
+          if (!building.building_code) continue;
+          const option = document.createElement("option");
+          option.value = building.building_code;
+          option.textContent = building.name || building.building_code;
+          select.appendChild(option);
+        }
+        select.value = state.building;
+      } catch (error) {
+        console.error("Building filter loading error:", error);
+      }
+    }
+
 
     /* =========================================================
        10. Alert Center Configuration
@@ -1463,6 +1488,11 @@
         return;
       }
 
+      if (state.building) {
+        void loadInitialAlerts();
+        return;
+      }
+
       AC.sysById.set(alert.id, sysOf(alert));
       AC.loadError = false;
 
@@ -1534,7 +1564,7 @@
 
       try {
 
-        const response = await fetch("/alerts?limit=200");
+        const response = await fetch(apiPath("/alerts?limit=200"));
 
         if (!response.ok) {
 
@@ -1729,7 +1759,7 @@
 
     async function loadIncidents() {
       try {
-        const data = await jsonFetch("/incidents");
+        const data = await jsonFetch(apiPath("/incidents"));
         const items = data.incidents || [];
         INC.items = items;
         $("incEmpty").style.display = items.length ? "none" : "block";
@@ -1935,6 +1965,15 @@
 
     $("refresh").onclick = () => { load(); loadIncidents(); };
 
+
+    $("buildingFilter").onchange = () => {
+      state.building = $("buildingFilter").value;
+      load();
+      loadInitialAlerts();
+      loadIncidents();
+    };
+
+    void loadBuildingOptions();
 
     // Load dashboard once
     load();

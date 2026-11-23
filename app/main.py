@@ -182,11 +182,17 @@ def dashboard_summary(
 
 
 @api.get("/incidents")
-def list_incidents():
+def list_incidents(building: str | None = Query(default=None)):
     try:
         with day2_connect() as conn:
             with conn.cursor() as cur:
-                return {"incidents": inc.list_incidents(cur)}
+                if building not in (None, ""):
+                    cur.execute("SELECT 1 FROM buildings WHERE building_code=%s", (building,))
+                    if cur.fetchone() is None:
+                        raise HTTPException(status_code=400, detail=f"Unknown building_code: {building}.")
+                return {"incidents": inc.list_incidents(cur, building_code=building)}
+    except HTTPException:
+        raise
     except DB_ERRORS as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 

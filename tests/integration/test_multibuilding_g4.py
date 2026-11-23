@@ -13,11 +13,10 @@ import psycopg
 from fastapi.testclient import TestClient
 
 
-EXPECTED_PROJECT = "anzma-g4-proof-20261123"
+EXPECTED_PROJECT = "anzma-g4-proof-final-20261123-1542"
 if os.getenv("ANZMA_G4_DISPOSABLE_PROJECT") != EXPECTED_PROJECT or os.getenv("PGHOST") != "db":
     raise RuntimeError(f"Run only with ANZMA_G4_DISPOSABLE_PROJECT={EXPECTED_PROJECT} inside its compose API container")
 
-from app.repositories import dashboard_core_pg as core  # noqa: E402
 from scripts.freshness_job import run_pass  # noqa: E402
 from app.main import api  # noqa: E402
 
@@ -60,30 +59,29 @@ class MultiBuildingG4Tests(unittest.TestCase):
         cls.conn.close()
 
     def _a_snapshot(self):
-        # The public dashboard routes have no building filter; use the same repository
-        # projection with a building id and fixed pre-ingestion time bounds for A.
-        summary = core.get_dashboard_summary(
-            self.conn, building_id=self.building_a_id,
-            start_time=core.format_ts(self.window_start), end_time=core.format_ts(self.window_end),
-        )
-        alerts = self.client.get("/alerts?limit=500", headers=self.headers).json()["items"]
-        incidents = self.client.get("/incidents", headers=self.headers).json()["incidents"]
-        freshness = self.client.get("/api/v1/freshness?building_code=MAIN-TOWER&limit=500", headers=self.headers).json()
-        sources = self.client.get("/api/v1/sources/liveness?building_code=MAIN-TOWER&limit=500", headers=self.headers).json()
-        gaps = self.client.get("/api/v1/data-gaps?building_code=MAIN-TOWER&status=all&limit=500", headers=self.headers).json()
-        asset_ids = {row["asset_id"] for row in self.conn.execute(
-            "SELECT asset_id FROM assets a JOIN locations l USING(location_id) WHERE l.building_id=%s",
-            (self.building_a_id,),
-        ).fetchall()}
-        stable = {
-            # KPIs use the same explicit A building and fixed time bounds. Global
-            # data-extent metadata is expected to move when B adds newer records.
-            "overview_kpis": summary["kpis"],
-            "alerts": [x for x in alerts if x["asset_id"] in asset_ids],
-            "incidents": [x for x in incidents if x["building"] == "Main Tower"],
-            "freshness": freshness["items"], "sources": sources["items"], "gaps": gaps["items"],
+        return self._public_snapshot("MAIN-TOWER")
+
+    def _public_snapshot(self, building_code=None):
+        paths = {
+            "overview": "/dashboard/overview?hours=24",
+            "trends": "/dashboard/trends?hours=24",
+            "equipment_health": "/dashboard/equipment-health?hours=24",
+            "alerts": "/alerts?limit=500",
+            "incidents": "/incidents",
+            "freshness": "/api/v1/freshness?limit=500",
+            "liveness": "/api/v1/sources/liveness?limit=500",
+            "gaps": "/api/v1/data-gaps?status=all&limit=500",
         }
-        return stable
+        result = {}
+        for name, path in paths.items():
+            url = f"{path}{'&' if '?' in path else '?'}building={building_code}" if building_code else path
+            response = self.client.get(url, headers=self.headers)
+            self.assertEqual(response.status_code, 200, f"{url}: {response.text}")
+            result[name] = response.json()
+        return result
+
+    def _hashes(self, snapshot):
+        return {name: canonical_hash(value) for name, value in snapshot.items()}
 
     def test_013_enforces_required_unique_building_code(self):
         with self.conn.cursor() as cur:
@@ -104,6 +102,19 @@ class MultiBuildingG4Tests(unittest.TestCase):
         self.conn.commit()
 
     def test_second_building_isolated_through_contract_and_evaluators(self):
+        legacy_hashes = {
+            "overview": "27c928ddd0a5d973c28615bfa0bd7ac87acdb0357b026c0d00a8b5b490319f45",
+            "trends": "d46f8bb08576fc5875e1f018a70e2c8c2387e2907cc20d20f8a47b16585aad6b",
+            "equipment_health": "7d5e43801123242608be62f505424a61d29ee2be02c2f2d09743e17c0778d211",
+            "alerts": "bd712f94c21c3aa2e4d07520b64c4ecedc56301f98379112c79cdb3e8fe56f31",
+            "incidents": "e535715f04075f62a60beaf5e39a851c7de593c8b8e7ffedbcf01ae18e819ff7",
+            "freshness": "aaaca23ffcb2f8de0dffafc97338bf2736e89ba45617b2611661dad3e193d33b",
+            "liveness": "6a6031629b625e97621af9617a2302153c9794f73475a6d171743ff04c73fbbf",
+            "gaps": "d68c75a3e9047e46f1cb6486f7fd79e29cd1478a1ce50ea429b160614cd6f7fa",
+        }
+        before_all = self._public_snapshot()
+        self.assertEqual(self._hashes(before_all), legacy_hashes,
+                         "omitted building filter must preserve pre-change public responses")
         before = self._a_snapshot()
         self.assertNotEqual("America/New_York", self.building_a_schedule["timezone"])
         building_code = f"G4-{self.suffix}"
@@ -137,6 +148,8 @@ class MultiBuildingG4Tests(unittest.TestCase):
                         (source_id, external_id, asset_id))
         self.conn.commit()
 
+        observation_end = self.window_end - timedelta(seconds=30)
+
         def stamp(value):
             return value.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
@@ -147,25 +160,30 @@ class MultiBuildingG4Tests(unittest.TestCase):
                     "building_code": building_code, "records": records}
 
         headers = {"Authorization": f"Bearer {key}"}
+        temperature_start = self.window_end - timedelta(hours=1)
         records = [
             {"record_type": "telemetry", "asset": {"external_id": external_id}, "metric_code": "temperature",
-             "value": 22.4, "unit": "C", "observed_at": stamp(self.now)},
+             "value": 32.0, "unit": "C", "observed_at": stamp(temperature_start)},
+            {"record_type": "telemetry", "asset": {"external_id": external_id}, "metric_code": "temperature",
+             "value": 34.0, "unit": "C", "observed_at": stamp(temperature_start + timedelta(minutes=15))},
+            {"record_type": "telemetry", "asset": {"external_id": external_id}, "metric_code": "temperature",
+             "value": 35.0, "unit": "C", "observed_at": stamp(temperature_start + timedelta(minutes=30))},
             {"record_type": "telemetry", "asset": {"external_id": external_id}, "metric_code": "humidity",
-             "value": 44.0, "unit": "%", "observed_at": stamp(self.now - timedelta(hours=3))},
+             "value": 44.0, "unit": "%", "observed_at": stamp(observation_end - timedelta(hours=3))},
             {"record_type": "event", "source_event_id": f"event-{self.suffix}", "asset": {"external_id": external_id},
-             "event_type": "hvac_recovered", "severity": "INFO", "observed_at": stamp(self.now - timedelta(minutes=1))},
-            {"record_type": "state", "asset": {"external_id": external_id}, "observed_at": stamp(self.now),
+             "event_type": "hvac_fault", "severity": "CRITICAL", "observed_at": stamp(observation_end - timedelta(minutes=1))},
+            {"record_type": "state", "asset": {"external_id": external_id}, "observed_at": stamp(observation_end),
              "reported_state": "RUNNING", "availability": "AVAILABLE"},
         ]
         accepted = self.client.post("/api/v1/ingest/batches", json=envelope(records), headers=headers)
         self.assertEqual(accepted.status_code, 200, accepted.text)
-        self.assertEqual(accepted.json()["counts"]["accepted"], 4)
+        self.assertEqual(accepted.json()["counts"]["accepted"], 6)
         keepalive = self.client.post("/api/v1/ingest/batches", json=envelope([]), headers=headers)
         self.assertEqual(keepalive.status_code, 200, keepalive.text)
         self.assertEqual(keepalive.json()["counts"]["received"], 0)
 
         foreign = {"record_type": "telemetry", "asset": {"asset_code": "HVAC-AHU-01"},
-                   "metric_code": "temperature", "value": 21.0, "unit": "C", "observed_at": stamp(self.now)}
+                   "metric_code": "temperature", "value": 21.0, "unit": "C", "observed_at": stamp(observation_end)}
         denied = self.client.post("/api/v1/ingest/batches", json=envelope([foreign]), headers=headers)
         self.assertEqual(denied.status_code, 422)
         self.assertEqual(denied.json()["rejected"][0]["reason_code"], "ASSET_NOT_PERMITTED")
@@ -173,12 +191,14 @@ class MultiBuildingG4Tests(unittest.TestCase):
         # Compare A immediately after B's ingest and before the global job refreshes
         # its evaluation timestamps for every building.
         after = self._a_snapshot()
-        before_hashes = {name: canonical_hash(value) for name, value in before.items()}
-        after_hashes = {name: canonical_hash(value) for name, value in after.items()}
+        before_hashes = self._hashes(before)
+        after_hashes = self._hashes(after)
         differences = {name: {"before": before[name], "after": after[name]}
                        for name in before if before_hashes[name] != after_hashes[name]}
         self.assertEqual(before_hashes, after_hashes, json.dumps(differences, sort_keys=True, default=str))
 
+        detected = self.client.post("/alerts/run", headers=self.headers)
+        self.assertEqual(detected.status_code, 200, detected.text)
         result = run_pass(self.conn, clock=lambda: self.now + timedelta(seconds=5))
         self.conn.commit()
         with self.conn.cursor() as cur:
@@ -192,24 +212,72 @@ class MultiBuildingG4Tests(unittest.TestCase):
             cur.execute("SELECT operational_state FROM asset_state_current WHERE asset_id=%s", (asset_id,))
             self.assertIsNotNone(cur.fetchone())
 
-        equipment = self.client.get("/dashboard/equipment-health?hours=24", headers=self.headers)
+        equipment = self.client.get(f"/dashboard/equipment-health?hours=24&building={building_code}", headers=self.headers)
         self.assertEqual(equipment.status_code, 200, equipment.text)
         b_rows = [row for row in equipment.json()["items"] if row["name"] == f"North Campus AHU {self.suffix}"]
         self.assertEqual(len(b_rows), 1)
         self.assertEqual(b_rows[0]["building"], building_name)
+        self.assertEqual(len(equipment.json()["items"]), 1)
+        overview = self.client.get(f"/dashboard/overview?hours=24&building={building_code}", headers=self.headers)
+        self.assertEqual(overview.status_code, 200, overview.text)
+        self.assertEqual(sum(item["assets"] for item in overview.json()["systems"]), 1)
+        self.assertEqual(next(item["value"] for item in overview.json()["kpis"]
+                              if item["key"] == "monitored_assets"), 1)
+        trends = self.client.get(f"/dashboard/trends?hours=24&building={building_code}", headers=self.headers)
+        self.assertEqual(trends.status_code, 200, trends.text)
+        self.assertEqual(trends.json()["top_assets"]["labels"], [f"North Campus AHU {self.suffix}"])
+        b_alerts = self.client.get(f"/alerts?limit=500&building={building_code}", headers=self.headers)
+        self.assertEqual(b_alerts.status_code, 200, b_alerts.text)
+        self.assertTrue(b_alerts.json()["items"])
+        self.assertTrue(all(item["asset_id"] == asset_id for item in b_alerts.json()["items"]))
+        b_incidents = self.client.get(f"/incidents?building={building_code}", headers=self.headers)
+        self.assertEqual(b_incidents.status_code, 200, b_incidents.text)
+        self.assertTrue(b_incidents.json()["incidents"])
+        self.assertTrue(all(item["building"] == building_name for item in b_incidents.json()["incidents"]))
         overall = self.client.get("/dashboard/overview?hours=24", headers=self.headers)
         self.assertEqual(overall.status_code, 200, overall.text)
-        b_freshness = self.client.get(f"/api/v1/freshness?building_code={building_code}&asset_code={asset_code}&limit=500",
+        self.assertEqual(sum(item["assets"] for item in overall.json()["systems"]), 13)
+        all_health = self.client.get("/dashboard/equipment-health?hours=24", headers=self.headers).json()
+        self.assertTrue(any(row["name"] == f"North Campus AHU {self.suffix}" for row in all_health["items"]))
+        all_trends = self.client.get("/dashboard/trends?hours=24", headers=self.headers).json()
+        old_event_count = sum(sum(values) for values in before_all["trends"]["events_by_system"].values())
+        all_event_count = sum(sum(values) for values in all_trends["events_by_system"].values())
+        self.assertEqual(all_event_count, old_event_count + 1)
+        all_alerts = self.client.get("/alerts?limit=500", headers=self.headers).json()["items"]
+        self.assertTrue(any(row["asset_id"] == asset_id for row in all_alerts))
+        all_incidents = self.client.get("/incidents", headers=self.headers).json()["incidents"]
+        self.assertTrue(any(row["building"] == building_name for row in all_incidents))
+        all_freshness = self.client.get("/api/v1/freshness?limit=500", headers=self.headers).json()["items"]
+        self.assertTrue(any(row["building_code"] == building_code for row in all_freshness))
+        all_liveness = self.client.get("/api/v1/sources/liveness?limit=500", headers=self.headers).json()["items"]
+        self.assertTrue(any(row["building_code"] == building_code for row in all_liveness))
+        all_gaps = self.client.get("/api/v1/data-gaps?status=all&limit=500", headers=self.headers).json()["items"]
+        self.assertTrue(any(row["building_code"] == building_code for row in all_gaps))
+        b_freshness = self.client.get(f"/api/v1/freshness?building={building_code}&asset_code={asset_code}&limit=500",
                                       headers=self.headers).json()["items"]
         self.assertTrue(any(row["metric_code"] == "humidity" and row["freshness"] == "MISSING" for row in b_freshness))
-        b_liveness = self.client.get(f"/api/v1/sources/liveness?building_code={building_code}&source_code={source_code}",
+        b_liveness = self.client.get(f"/api/v1/sources/liveness?building={building_code}&source_code={source_code}",
                                      headers=self.headers).json()["items"]
         self.assertEqual(len(b_liveness), 1)
         self.assertEqual(b_liveness[0]["state"], "ALIVE")
-        b_gaps = self.client.get(f"/api/v1/data-gaps?building_code={building_code}&asset_code={asset_code}&status=open",
+        b_gaps = self.client.get(f"/api/v1/data-gaps?building={building_code}&asset_code={asset_code}&status=open",
                                  headers=self.headers).json()["items"]
         self.assertTrue(any(row["metric_code"] == "humidity" and row["cause"] == "NO_DATA" for row in b_gaps))
-        print(json.dumps({"event": "G4_A_BUILDING_PARITY", "hashes": after_hashes,
+        for path in ("/dashboard/overview", "/dashboard/trends", "/dashboard/equipment-health",
+                     "/alerts", "/incidents", "/api/v1/freshness", "/api/v1/sources/liveness",
+                     "/api/v1/data-gaps"):
+            query = "?building=G4-NO-SUCH-CODE"
+            response = self.client.get(path + query, headers=self.headers)
+            self.assertEqual(response.status_code, 400, f"{path}: {response.status_code} {response.text}")
+        options = self.client.get("/dashboard/filters", headers=self.headers)
+        self.assertEqual(options.status_code, 200, options.text)
+        self.assertIn(building_code, {item["building_code"] for item in options.json()["buildings"]})
+        dashboard = self.client.get("/dashboard", headers=self.headers)
+        self.assertEqual(dashboard.status_code, 200, dashboard.text)
+        self.assertIn('id="buildingFilter"', dashboard.text)
+        self.assertIn("All buildings", dashboard.text)
+        print(json.dumps({"event": "G4_PUBLIC_API_BUILDING_FILTERS", "legacy_no_filter_hashes": legacy_hashes,
+                          "a_before_after_hashes": after_hashes,
                           "building_b": building_code, "source": source_code,
                           "asset": asset_code, "freshness_pass": result}, sort_keys=True, default=str))
 

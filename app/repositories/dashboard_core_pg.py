@@ -284,9 +284,9 @@ def get_filter_options(conn):
 
 
     buildings = [
-        {"building_id": row["building_id"], "name": row["name"]}
+        {"building_id": row["building_id"], "building_code": row["building_code"], "name": row["name"]}
         for row in conn.execute(
-            "SELECT building_id, name FROM buildings ORDER BY building_id"
+            "SELECT building_id, building_code, name FROM buildings ORDER BY building_id"
         )
     ]
 

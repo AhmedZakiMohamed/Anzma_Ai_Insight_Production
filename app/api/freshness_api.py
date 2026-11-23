@@ -100,11 +100,28 @@ def _http_db_error(exc: Exception) -> HTTPException:
     return HTTPException(503, f"Database unavailable: {str(exc).strip()[:200]}")
 
 
+def _selected_building(open_ro, building: str | None, building_code: str | None) -> str | None:
+    """Support the shared `building` alias while preserving the older building_code filter."""
+    if building in (None, ""):
+        return building_code
+    if building_code not in (None, "", building):
+        raise HTTPException(400, "building and building_code filters must match.")
+    try:
+        with open_ro() as conn:
+            found = conn.execute("SELECT 1 FROM buildings WHERE building_code=%s", (building,)).fetchone()
+    except (OperationalError, da.DatabaseUnavailable) as exc:
+        raise _http_db_error(exc) from exc
+    if found is None:
+        raise HTTPException(400, f"Unknown building_code: {building}.")
+    return building
+
+
 def create_router(open_ro=open_readonly, clock=lambda: datetime.now(timezone.utc)):
     router = APIRouter(prefix="/api/v1", tags=["Freshness (read-only)"])
 
     @router.get("/freshness", summary="Persisted series freshness")
     def freshness(
+        building: str | None = None,
         building_code: str | None = None,
         source_code: str | None = None,
         asset_code: str | None = None,
@@ -115,7 +132,8 @@ def create_router(open_ro=open_readonly, clock=lambda: datetime.now(timezone.utc
     ):
         _pagination(limit, offset)
         selected_state = _choice(state, FRESHNESS_STATES, "state")
-        filters = [("building_code", building_code), ("source_code", source_code),
+        selected_building = _selected_building(open_ro, building, building_code)
+        filters = [("building_code", selected_building), ("source_code", source_code),
                    ("asset_code", asset_code), ("metric_code", metric_code), ("state", selected_state)]
         fields = {"building_code": "b.building_code", "source_code": "ds.source_code",
                   "asset_code": "a.asset_code", "metric_code": "f.metric_code", "state": "f.freshness"}
@@ -180,6 +198,7 @@ def create_router(open_ro=open_readonly, clock=lambda: datetime.now(timezone.utc
 
     @router.get("/sources/liveness", summary="Persisted source liveness and separate diagnostics")
     def source_liveness(
+        building: str | None = None,
         building_code: str | None = None,
         source_code: str | None = None,
         state: str | None = None,
@@ -188,7 +207,8 @@ def create_router(open_ro=open_readonly, clock=lambda: datetime.now(timezone.utc
     ):
         _pagination(limit, offset)
         selected_state = _choice(state, LIVENESS_STATES, "state")
-        filters = [("building_code", building_code), ("source_code", source_code), ("state", selected_state)]
+        selected_building = _selected_building(open_ro, building, building_code)
+        filters = [("building_code", selected_building), ("source_code", source_code), ("state", selected_state)]
         fields = {"building_code": "b.building_code", "source_code": "ds.source_code", "state": "s.state"}
         where, params = _filter_sql(filters, "", fields)
         joins = """FROM source_liveness_current s
@@ -233,6 +253,7 @@ def create_router(open_ro=open_readonly, clock=lambda: datetime.now(timezone.utc
     def data_gaps(
         status: str = "open",
         cause: str | None = None,
+        building: str | None = None,
         building_code: str | None = None,
         source_code: str | None = None,
         asset_code: str | None = None,
@@ -246,7 +267,8 @@ def create_router(open_ro=open_readonly, clock=lambda: datetime.now(timezone.utc
             raise HTTPException(400, "status must be open, closed, or all.")
         selected_cause = _choice(cause, GAP_CAUSES, "cause")
         since_time = _since(since)
-        filters = [("building_code", building_code), ("source_code", source_code), ("asset_code", asset_code),
+        selected_building = _selected_building(open_ro, building, building_code)
+        filters = [("building_code", selected_building), ("source_code", source_code), ("asset_code", asset_code),
                    ("cause", selected_cause), ("since", since_time)]
         fields = {"building_code": "b.building_code", "source_code": "ds.source_code",
                   "asset_code": "a.asset_code", "cause": "g.cause", "since": "g.detected_at >="}

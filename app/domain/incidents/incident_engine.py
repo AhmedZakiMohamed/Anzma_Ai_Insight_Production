@@ -161,7 +161,7 @@ def recommended_actions(cur, alert_ids):
     return sorted(merged.values(), key=lambda x: (x["priority"], x["id"]))
 
 
-def list_incidents(cur, status=None, severity=None):
+def list_incidents(cur, status=None, severity=None, building_code=None):
     """Ranked list: severity, then open before acknowledged before resolved, then most recent."""
     cur.execute("""SELECT i.incident_id AS id, i.title, i.severity, i.status, i.first_ts, i.last_ts, i.grouping_rule,
                           i.location_id, l.name AS zone, b.name AS building,
@@ -169,8 +169,10 @@ def list_incidents(cur, status=None, severity=None):
                    FROM incidents i JOIN locations l USING (location_id) JOIN buildings b USING (building_id)
                    LEFT JOIN alerts al USING (incident_id)
                    WHERE (%s::text IS NULL OR i.status=%s) AND (%s::text IS NULL OR i.severity=%s)
+                     AND (%s::text IS NULL OR b.building_code=%s)
                    GROUP BY i.incident_id, l.name, b.name""",
-                (da.enum_to_db(status), da.enum_to_db(status), da.enum_to_db(severity), da.enum_to_db(severity)))
+                (da.enum_to_db(status), da.enum_to_db(status), da.enum_to_db(severity), da.enum_to_db(severity),
+                 building_code, building_code))
     rows = [dict(r) for r in cur.fetchall()]
     order = {"open": 0, "acknowledged": 1, "resolved": 2}
     rows.sort(key=lambda r: (-SEVERITY_RANK[r["severity"]], order[r["status"]], -r["last_ts"].timestamp()))

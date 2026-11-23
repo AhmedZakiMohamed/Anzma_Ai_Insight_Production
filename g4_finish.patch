@@ -1,0 +1,232 @@
+diff --git a/KNOWN_ISSUES.md b/KNOWN_ISSUES.md
+index 9f39d6a..8a50363 100644
+--- a/KNOWN_ISSUES.md
++++ b/KNOWN_ISSUES.md
+@@ -15,7 +15,7 @@
+ | KI-007 | Medium | The freshness evaluator runs only when the opt-in Compose `freshness` profile is enabled; there is no retention/expiry policy. | If the profile is not started or stays stopped, persisted source/freshness/gap state becomes old; historical rows continue accumulating. A stale label means the stored evaluation is old, not that an asset is offline. | Enable the profile and monitor `snapshot_stale` / `evaluated_at`; plan storage monitoring externally. | Deployment default-on policy and retention ownership/expiry remain open for separate operations work. |
+ | KI-017 | Low | E5 exposes persisted freshness/liveness/gap evidence to the operator API and dashboard, but Chat/AI does not query it and the UI does not poll automatically. | Operators must use Refresh and the displayed evaluation age; AI explanations continue using their existing stored alert facts. | Use the E5 panel/API for freshness evidence and refresh when needed. | Decide whether Chat/AI should cite freshness in a separately scoped and tested change. |
+ | KI-018 | Low — accepted G3 limitation | `asset_state_current` and `asset_state_history` are a shadow projection only. Existing dashboard, alert, incident, and chat readers remain authoritative; the new projection is not exposed as an operational API/dashboard source. `asset_state_history` has no retention policy yet. | Operators must continue using the existing operational views. The append-only history will grow until a reviewed policy is delivered by G5. | Treat G3 state as diagnostic evidence only; use existing readers for operations. | G5 must define and explicitly approve retention for `asset_state_history` before any cleanup is implemented. |
+-| KI-019 | Medium | The dashboard overview, alerts, and incidents APIs have no building filter, and the dashboard has no building selector. The building-specific freshness, source-liveness, and gap APIs do accept `building_code`. Catalogue/threshold rules also retain demo assumptions: five fixed system types (`db/init/anzma_schema_and_seed.sql`, `app/config/reference_data.py`), fixed thresholds (`app/domain/alerts/alert_config.py`), and `Server Room` special cases (`app/domain/alerts/alert_engine.py`, `app/api/chat_lite.py`). | A second building using the existing HVAC catalog ingests and appears in the overall equipment-health response, but operators cannot request a complete public building-scoped overview/alerts/incidents response. Sites with different catalogs/zones may receive generic or demo-specific alert behavior. | Use the building-bearing equipment-health rows and building-filtered freshness/liveness/gap endpoints; keep the site within the existing supported system/metric/event catalog and review generated alert thresholds. | A public building filter requires an API/interface design and approval before implementation. Catalogue and per-site thresholds need separate product/data decisions; G4 made no application/API changes. |
++| KI-019 | Low until verified | The optional `building` filter on the dashboard overview/trends/equipment-health, alerts, incidents and freshness/liveness/gap endpoints and the dashboard selector are implemented in the working tree but not yet run on a fresh disposable stack. Catalogue/threshold rules retain demo assumptions: five fixed system types (`db/init/anzma_schema_and_seed.sql`, `app/config/reference_data.py`), global alert thresholds (`app/domain/alerts/alert_config.py`), fault/recovery lists (`app/repositories/dashboard_core_pg.py`, `app/api/frontend_api.py`) and `Server Room` special cases (`app/domain/alerts/alert_engine.py`, `app/api/chat_lite.py`). | Until verified, building scoping is unproven through the public API. Sites with other catalogues/zones may get generic or demo-specific alert behaviour. | Follow `docs/G4_MULTI_BUILDING.md` before relying on the filter; keep new sites inside the supported system/metric/event catalogue. | Verify on a fresh disposable stack. Per-site thresholds and catalogue extension need a product/data decision. |
+ | KI-008 / ISS-008 | Medium — resolved for configured building schedules | Alert work-hour classification and time-of-day anomaly baselines now use each asset building's IANA timezone, local hours, and non-working weekdays. Existing buildings retain migration 009's `Etc/GMT-2`, 08:00–18:00, all-days compatibility schedule. | A site with an unconfigured or incorrectly provisioned schedule can still be classified using compatibility defaults; the customer's actual timezone/calendar is not established in the repository. | Configure and verify each building with `scripts/freshness_admin.py set-building-schedule`; inspect NULL fields because they use compatibility defaults. | Completed in G1 (`d39c582`); two-zone/DST unit tests passed, and seeded dashboard/alert/incident responses matched the pre-change capture exactly. |
+ | KI-009 | Medium | Telemetry uniqueness is global on `(asset_id, metric_id, ts)` and does not include `source_id`. | Two sources reporting one series at the same timestamp conflict if values differ; identical values may be classified as duplicates. | Use one authoritative source per asset/metric/time series or coordinate timestamps and values upstream. | Define source precedence/aggregation and a reviewed key migration before supporting multi-source arbitration. Do not alter the current key implicitly. |
+ | KI-010 | Low | Legacy `POST /events` performs `to_regclass('public.uq_event_legacy_natural_key')` on each request to select a compatible conflict target. | Adds one catalog lookup per event write. | None required at current demo scale. | Cache migration capability at process start or use a stable compatibility path after rollout policy is established; retain pre-007 compatibility if required. |
+@@ -25,6 +25,10 @@
+ | KI-014 | High for integration readiness | No vendor connector or simulator connector is implemented. The tested first batch was manually submitted to the Core API. | The system does not yet poll, subscribe to, buffer, retry, or translate a real device/vendor feed. | Use the documented batch contract and manually provision source/mappings for controlled tests only. | Build a separately scoped connector after vendor protocol and operational requirements are approved. |
+ | KI-015 | Medium | LLM mode depends on local Ollama and a downloaded model. When the endpoint is unavailable, the tested E2E path falls back to deterministic evidence-grounded text and states that the language model was unavailable. | Model-generated explanations are unavailable during Ollama/model outage. The tested fallback is grounding-checked but not a semantic-accuracy guarantee. | Keep LLM optional; use the deterministic fallback and review cited evidence. | Successful live-model inference was **NOT TESTED**: the isolated Qwen pull reached 99%, then the registry request timed out (`dial tcp 104.18.17.170:443: i/o timeout`); follow-up `ollama list` was empty. Verify model download, response, timeout, and recovery on the target deployment before claiming LLM readiness. |
+ | KI-016 | Low — resolved with explicit comparator | An earlier capture reported a final-digit average zone temperature difference (`17.872061855670097` vs `17.8720618556701`). The closure rerun reproduced the exact supplied H0 response hash; direct SQL `AVG(DOUBLE PRECISION)` over 291 samples returned `17.872061855670097`. | Strict float/byte comparison could flag a ~`3.55e-15 °C` representational delta. | `scripts/compare_api_snapshots.py` uses `rel_tol=1e-12` and `abs_tol=1e-12`; IDs, counts, timestamps, strings, and out-of-tolerance numbers remain exact/fail. A `0.01 °C` regression is asserted to fail. | All three post-migration H0 snapshots compared with zero differences; tolerance behavior passed its three unit assertions. |
++| KI-020 | Low | `tests/integration/test_multibuilding_g4.py` compares the unfiltered public responses with hard-coded hashes of the original seed database and leaves its building-B rows in the database. | The test passes only once per fresh disposable database; a second run on the same database fails by design. | Create a new disposable project (fresh volume) for every run. | Optional later: seed-independent assertions. |
++| KI-021 | Low | `GET /dashboard/filters` now includes `building_code` in each building object (additive field; needed by the selector). | Strict consumers that compare the full filter response byte-for-byte will see a new key. | None needed for the dashboard. | Amr to review with the other dashboard changes. |
++| KI-022 | Medium | The chat assistant (`/chat`, `app/api/chat_lite.py`, `chat_facts.py`) has no building parameter; it answers from the whole database. | In a multi-building deployment chat answers and the dashboard building filter can disagree. | Phrase questions with the building name. | Needs a design decision; Amr owns the chat path. |
++| KI-023 | Low | Migration 013's backfill in `scripts/apply_migrations.py` assigns codes by the two seed building NAMES (`Main Tower`, `Data Center Annex`) only. | Any other building without a code stops the migration with the documented admin remedy. | Run `scripts/ingestion_admin.py register-building` for each reported ID, then rerun. | Intended behaviour; documented in `docs/G4_MULTI_BUILDING.md`. |
+ 
+ ## G3 Ollama verification note — 2026-11-22
+ 
+diff --git a/docs/CHANGE_COORDINATION.md b/docs/CHANGE_COORDINATION.md
+index fe4afba..6b7607e 100644
+--- a/docs/CHANGE_COORDINATION.md
++++ b/docs/CHANGE_COORDINATION.md
+@@ -73,3 +73,7 @@ docker compose --env-file .env -p "$PROJECT" -f "$COMPOSE_FILE" exec -T api pyth
+ | `db/migrations/013_building_code_required.sql`, `scripts/verify_schema.sql` | Added NOT NULL and full unique building-code enforcement, an actionable preflight error, and schema/ledger checks. | Make building identity administrator-supplied and prevent ambiguous mappings. | `3888154` |
+ | `tests/integration/test_multibuilding_g4.py` | Added disposable multi-building end-to-end proof for source-key isolation, mixed record ingestion, keepalive, liveness, freshness, gap, G3 state, fixed-window A parity, and a timezone distinct from the seed site. | Verify the existing contract and evaluators across two buildings without changing application code/API shape. | `e5606ae`, `e5ddcb5` |
+ | `deploy/examples/g4_second_building.sql`, `docs/PHASE1_STATUS.md`, `KNOWN_ISSUES.md`, `docs/CHANGE_COORDINATION.md` | Added second-site SQL example, G4 evidence/status, exact pre-existing-database migration step and remaining dashboard/catalogue limitations. | Make the verified G4 setup repeatable and record the missing public building filter without expanding API scope. | This documentation commit |
++| `app/dashboard/static/dashboard.html` | Added an optional "All buildings" selector, a `buildingFilter` state, and an `apiPath()` helper that appends `building`; alert and incident loads honour it. No existing markup renamed or removed. **Amr, please review: this file is shared.** | Let operators scope the dashboard to one building. | pending commit |
++| `app/main.py`, `app/domain/incidents/incident_engine.py` | `GET /incidents` accepts an optional `building`; `list_incidents` takes an optional `building_code`. Unknown code => 400. | Building-scoped incident list; omitted => unchanged. | pending commit |
++| `app/api/frontend_api.py`, `app/api/freshness_api.py`, `app/repositories/dashboard_core_pg.py` | Optional `building` on overview/trends/equipment-health/alerts and the three freshness endpoints; `/dashboard/filters` returns an additional `building_code`. | Building-scoped reads; additive only. | pending commit |
++| `tests/unit/test_g4_safety.py`, `docs/G4_MULTI_BUILDING.md` | New no-database safety tests and the G4 verification/hardcoded-dependency note. | Prove a pre-012 database degrades safely and `_g3_evidence` stays private. | pending commit |
+diff --git a/docs/G4_MULTI_BUILDING.md b/docs/G4_MULTI_BUILDING.md
+new file mode 100644
+index 0000000..38aeaee
+--- /dev/null
++++ b/docs/G4_MULTI_BUILDING.md
+@@ -0,0 +1,91 @@
++# G4 — multi-building proof: what is done, what is unverified, how to verify
++
++**Status: IMPLEMENTED IN THE WORKING TREE, VERIFICATION PENDING.** This note was written without running Docker or PostgreSQL. Nothing here is a test result except where a command and its output are quoted. G4 is DONE only when section 3 passes on a fresh disposable stack.
++
++## 1. What the code now does (additive; omitted filter = unchanged behaviour)
++
++| Area | Change | File |
++|---|---|---|
++| Dashboard | Optional `building` (a `building_code`) on `/dashboard/overview`, `/trends`, `/equipment-health` | `app/api/frontend_api.py` |
++| Alerts | Optional `building` on `GET /alerts` | `app/api/frontend_api.py` |
++| Incidents | Optional `building` on `GET /incidents` | `app/main.py`, `app/domain/incidents/incident_engine.py` |
++| Freshness | `building` accepted on `/api/v1/freshness`, `/api/v1/sources/liveness`, `/api/v1/data-gaps` next to the older `building_code` (must match if both are given) | `app/api/freshness_api.py` |
++| Filter options | `GET /dashboard/filters` returns `building_code` for each building (new key) | `app/repositories/dashboard_core_pg.py` |
++| UI | "All buildings" selector; alert and incident loads honour it | `app/dashboard/static/dashboard.html` |
++| Unknown code | HTTP 400 `Unknown building_code: …` on every endpoint above | all of the above |
++
++Earlier G4 commits: migration 013 (`building_code` NOT NULL + unique), seed building codes (`53a23f5`), second-building example SQL, ingestion isolation test.
++
++## 2. Hardcoded dependencies found (grep of `app/`, `scripts/`, `deploy/`; not exhaustive)
++
++| Finding | Blocks a new building? | Decision |
++|---|---|---|
++| No building names or asset codes in `app/` | No | — |
++| `scripts/apply_migrations.py` maps the two seed building NAMES to `MAIN-TOWER` / `DATA-CENTER-ANNEX` for migration 013 | Only for buildings without a code | Kept. Any other building stops the migration with the `register-building` remedy |
++| Time zone and work hours are per building (`buildings.timezone`, `work_*`) with fallback constants when NULL (`app/domain/alerts/alert_config.py`, `app/services/freshness.py`) | No | G1 |
++| Five fixed system types (`CHECK` in `db/init/anzma_schema_and_seed.sql`, `app/config/reference_data.py`, `SYSTEM_CODES` in `frontend_api.py`) | Yes for a new system type | Documented; product decision |
++| Fault/recovery pairs and fault lists (`FAULT_RECOVERY_PAIRS` in `dashboard_core_pg.py`, `FAULT_EVENTS` / `NOT_COUNTED_EVENTS` in `frontend_api.py`) | Yes for event types outside the catalogue (also rejected by ingestion as `UNKNOWN_EVENT_TYPE`) | Documented; extend catalogue + these lists together |
++| Alert thresholds and rules are global (`alert_config.py`: `T`, `RULES`), with `Server Room` special cases (`alert_engine.py`, `chat_lite.py`) | No, but thresholds are not per site | Documented (KI-019) |
++| `MAX_HOURS = 168` dashboard window cap | No | — |
++| Chat assistant has no building parameter | Not a blocker; answers are not building-scoped | KI-022 |
++
++## 3. Verification steps (run on a FRESH disposable project; never on `anzma-insight`, `anzma-d3-verify` or `anzma-acceptance-*`)
++
++Rules from `docs/INCIDENTS.md` apply: every database command runs inside the disposable project's container; never export `PGHOST`/`PGPORT` pointing at localhost; host ports only from 18000–19999.
++
++1. Prepare an environment file with safe ports and a token (the example file defaults to 5432/8000/11434, which collide with the live stack):
++
++```bash
++PROJECT=anzma-g4-proof-20261123
++COMPOSE_FILE=deploy/compose/docker-compose.yml
++cp deploy/examples/.env.example /tmp/g4.env
++sed -i.bak -e 's/^DB_HOST_PORT=.*/DB_HOST_PORT=19432/' -e 's/^API_HOST_PORT=.*/API_HOST_PORT=19080/' \
++           -e 's/^OLLAMA_HOST_PORT=.*/OLLAMA_HOST_PORT=19434/' -e "s/^ANZMA_API_TOKEN=.*/ANZMA_API_TOKEN=g4-$(openssl rand -hex 8)/" /tmp/g4.env
++grep -E '^(DB|API|OLLAMA)_HOST_PORT|^ANZMA_API_TOKEN' /tmp/g4.env
++```
++
++2. Start it with NEW empty volumes and confirm the target before touching the database:
++
++```bash
++docker compose --env-file /tmp/g4.env -p "$PROJECT" -f "$COMPOSE_FILE" up -d --build
++docker compose --env-file /tmp/g4.env -p "$PROJECT" -f "$COMPOSE_FILE" ps
++docker compose --env-file /tmp/g4.env -p "$PROJECT" -f "$COMPOSE_FILE" exec -T api python scripts/apply_migrations.py
++```
++
++   The runner must report only the disposable database and skip what is already applied. If the project name or ports are not the ones above, stop.
++
++3. No-database safety tests plus the full unit suite:
++
++```bash
++docker compose --env-file /tmp/g4.env -p "$PROJECT" -f "$COMPOSE_FILE" exec -T api python -m unittest tests.unit.test_g4_safety -v
++docker compose --env-file /tmp/g4.env -p "$PROJECT" -f "$COMPOSE_FILE" exec -T api python -m unittest discover -s tests/unit
++```
++
++4. The public-API isolation proof (one run per fresh database):
++
++```bash
++docker compose --env-file /tmp/g4.env -p "$PROJECT" -f "$COMPOSE_FILE" exec -T \
++  -e ANZMA_G4_DISPOSABLE_PROJECT="$PROJECT" api python -m unittest tests.integration.test_multibuilding_g4 -v
++```
++
++   It checks: unfiltered public responses equal the pre-change hashes; `?building=MAIN-TOWER` is identical before and after building B is ingested; B appears only under `?building=<B>` and in the unfiltered totals; a key for B cannot write A's assets (`ASSET_NOT_PERMITTED`); unknown codes return 400; the selector exists in `/dashboard`.
++
++5. Full regression on the same stack, one table versus the last baseline recorded in `docs/PHASE1_STATUS.md` (the unit suite gains the 3 new tests). Run each suite exactly as recorded there; any difference must be explained.
++
++6. Pre-012 safety (database without the asset-state tables): covered by `tests/unit/test_g4_safety.py` (cursor double, no database). A live check is optional: restore the H0 dump into a second disposable project, apply only migrations up to 011, call `POST /alerts/{id}/explain`, expect HTTP 200.
++
++7. Clean up only your own project:
++
++```bash
++docker compose --env-file /tmp/g4.env -p "$PROJECT" -f "$COMPOSE_FILE" down -v
++```
++
++## 4. Acceptance for G4
++
++* Step 3 and 4 pass; step 5 shows no regression; step 6 unit tests pass.
++* Amr reviews the `dashboard.html`, `main.py` and `/dashboard/filters` touches (`docs/CHANGE_COORDINATION.md`).
++* Then update `docs/PHASE1_STATUS.md` (G4 DONE with the command output) and push after review.
++
++## 5. Not covered by G4
++
++Per-site thresholds, new system types, chat scoping (KI-022), and a database-level seed of a third building in the default compose install.
+diff --git a/docs/PHASE1_STATUS.md b/docs/PHASE1_STATUS.md
+index 50cbf93..ff574ef 100644
+--- a/docs/PHASE1_STATUS.md
++++ b/docs/PHASE1_STATUS.md
+@@ -48,11 +48,11 @@ The projection maps existing dashboard buckets to operational state, derives Cor
+ 
+ ### G4 — multi-building proof
+ 
+-**Status: PARTIAL — multi-building data/ingestion proof DONE; public per-building dashboard overview remains blocked by the existing API shape.** Migration `013_building_code_required.sql` makes `buildings.building_code` NOT NULL and adds a full unique index. It refuses to guess existing codes and names missing IDs with the exact `ingestion_admin.py register-building` remedy. `scripts/verify_schema.sql` checks the migration ledger, NOT NULL property, and unique index. The runner was exercised on disposable PostgreSQL 16: an unprepared seeded DB failed with the intended actionable error; after registering the two legacy rows, migration 013 applied, then skipped on rerun. H0 restored facts remained `buildings/locations/assets/telemetry/events/alerts/incidents = 2/6/12/4669/955/19/15`; `verify_schema.sql` returned `OVERALL OK`.
++**Status: IMPLEMENTED IN THE WORKING TREE, VERIFICATION PENDING (not DONE).** The optional `building` filter, the dashboard selector and the public-API isolation test are written; none of it has been run on a fresh disposable stack since the last edit. Run order and acceptance checks: `docs/G4_MULTI_BUILDING.md`. Earlier text below describing the missing filter is historical. Migration `013_building_code_required.sql` makes `buildings.building_code` NOT NULL and adds a full unique index. It refuses to guess existing codes and names missing IDs with the exact `ingestion_admin.py register-building` remedy. `scripts/verify_schema.sql` checks the migration ledger, NOT NULL property, and unique index. The runner was exercised on disposable PostgreSQL 16: an unprepared seeded DB failed with the intended actionable error; after registering the two legacy rows, migration 013 applied, then skipped on rerun. H0 restored facts remained `buildings/locations/assets/telemetry/events/alerts/incidents = 2/6/12/4669/955/19/15`; `verify_schema.sql` returned `OVERALL OK`.
+ 
+ **G4 evidence:** `deploy/examples/g4_second_building.sql` provisions an example second site with `America/New_York`, 07:00–16:00, separate location and two HVAC assets. The automated disposable test is `ANZMA_G4_DISPOSABLE_PROJECT=anzma-g4-proof-20261123 python -m unittest tests.integration.test_multibuilding_g4 -v` inside that project's API container. Latest run: 2 tests, PASS. It registers a distinct source/key and source-scoped asset mapping, sends telemetry/event/state records plus an empty keepalive batch through `/api/v1/ingest/batches`, verifies `ASSET_NOT_PERMITTED` against an A asset, then runs the real freshness/state pass. Its tested B rows were ALIVE, temperature FRESH, old humidity MISSING with an open `NO_DATA` gap, and an `asset_state_current` row. `/dashboard/equipment-health` showed B with its building name; the global `/dashboard/overview` returned 200. The per-A fixed-window KPI projection and A-filtered alerts/incidents/freshness/source/gap rows had equal canonical hashes before/after ingestion: overview_kpis `34ce2546…`, alerts `16f8c599…`, incidents `a7d9f19a…`, freshness `cb44a4c9…`, sources `4f53cda1…`, gaps `4f53cda1…`.
+ 
+-**Interface limitation:** `/dashboard/overview`, `/alerts`, and `/incidents` do not accept a building filter, and there is no dashboard building selector. The A overview hash above uses the existing repository query with `building_id=1` and fixed window bounds; it is not a public per-building endpoint. `/api/v1/freshness`, `/api/v1/sources/liveness`, and `/api/v1/data-gaps` do accept `building_code`. No API shape or application code was changed. A public per-building dashboard/read API needs a separately reviewed interface design before it can be implemented, so G4 is not fully accepted.
++**Building filter (additive, pending verification):** optional `building` (a `building_code`) on `GET /dashboard/overview`, `/dashboard/trends`, `/dashboard/equipment-health`, `/alerts`, `/incidents`, and `/api/v1/freshness`, `/api/v1/sources/liveness`, `/api/v1/data-gaps` (the three freshness endpoints keep their older `building_code` parameter; both may be given if equal). Omitted => unchanged queries; unknown code => HTTP 400. `GET /dashboard/filters` now also returns `building_code` for each building (additive field). `app/dashboard/static/dashboard.html` has an "All buildings" selector (touch logged in `docs/CHANGE_COORDINATION.md`). New no-database unit tests: `tests/unit/test_g4_safety.py` (pre-012 database degrades to no context; `_g3_evidence` never in a public response).
+ 
+ **Remaining fixed dependencies found:** existing system types are a fixed five-value check in `db/init/anzma_schema_and_seed.sql` and `app/config/reference_data.py`; alert rules and numeric defaults are in `app/domain/alerts/alert_config.py`, with a `Server Room` HVAC threshold branch in `app/domain/alerts/alert_engine.py` and `app/api/chat_lite.py`. These did not block a second building using the existing HVAC catalog but remain site/catalogue limitations. See KI-019. No seed/injection path was retired.
+ 
+@@ -104,3 +104,4 @@ The projection maps existing dashboard buckets to operational state, derives Cor
+ - **2026-11-22 — Task A and G3 verification on `main`:** isolated Compose project `anzma-taska-current-20261122`; committed code/test state `4b2d135`. Current rerun: unit 83 (1 skipped), data integrity 23/23, frontend/API 42/42, Day2 43/43, E2 S1 `--build --llm` 15/15 (fallback; live model **NOT TESTED**), chat consistency 31/31, model-provider 3/3, E2–E5 freshness suites 36/36, G3 integration 6/6 twice, and G3 grounding unit 3/3. Schema verification was `OVERALL OK`; response hashes and parity evidence are recorded above and in `ASSET_STATE_DESIGN.md`. The API container initially restarted because its temporary staging `ANZMA_API_TOKEN` was empty; only that isolated API container was restarted with a temporary token. The isolated PostgreSQL volume and shared stacks were not recreated or changed. No push or tag was made.
+ - **2026-11-22 — PART 0 fresh-stack gate on `3ce8f6f`:** project `anzma-g3-gate-20261122`, API port 18321, PostgreSQL 16, empty project volumes; all suites/counts and G3 hash/parity results are recorded in the G3 section. H0 migration rehearsal used its own project `anzma-g3-mig-20261122`, with only migrations 006–012 applied. Ollama service DNS resolved to the Compose container; the configured `qwen2.5:3b` model was absent, so live inference remains **NOT TESTED**. Both projects were removed at the end of verification; no shared resources or databases were changed.
+ - **2026-11-22 — G4 partial proof:** commits `3888154` (migration/schema), `e5606ae` and `e5ddcb5` (integration proof), and this docs commit. Only disposable project `anzma-g4-proof-20261123` and the earlier disposable rehearsal projects were used. Migration 013 was rejected until existing building codes were explicitly supplied, then applied and rerun as a no-op. G4 passed 2/2 integration checks; state parity over 19 assets had 0 mismatches. Per-building freshness and equipment-health evidence is available, but a public per-building overview/alerts/incidents filter is absent and was not added without an interface decision. G4 remains PARTIAL. No push/tag; stop before G5.
++- **2026-11-23 — G4 finish (written without running Docker; UNRUN):** building filter, selector, isolation test and safety unit tests are in the working tree; `docs/G4_MULTI_BUILDING.md` lists the hardcoded dependencies found (grep) and the exact verification steps. G4 becomes DONE only after those steps pass on a fresh disposable stack.
+diff --git a/tests/unit/test_g4_safety.py b/tests/unit/test_g4_safety.py
+new file mode 100644
+index 0000000..70eeaa5
+--- /dev/null
++++ b/tests/unit/test_g4_safety.py
+@@ -0,0 +1,70 @@
++"""G4 safety checks that need no database.
++
++1. A database that has not applied migration 012 (no asset_state_current table) must not break alert
++   explanations: alert_evidence_context has to degrade to "no context" after ONE catalogue lookup.
++2. The private G3 evidence object (_g3_evidence) must never appear in a public explanation response.
++"""
++from __future__ import annotations
++
++import json
++import unittest
++
++from app.domain.evidence import validation
++from app.services.asset_state import alert_evidence_context
++
++
++class RecordingCursor:
++    """Minimal cursor double: records statements, answers the to_regclass lookup."""
++
++    def __init__(self, table_name):
++        self.table_name = table_name
++        self.statements = []
++
++    def execute(self, sql, params=None):
++        self.statements.append(" ".join(str(sql).split()))
++
++    def fetchone(self):
++        return {"table_name": self.table_name}
++
++    def fetchall(self):  # pragma: no cover - must not be reached when the table is absent
++        raise AssertionError("no further query may run when asset_state_current is absent")
++
++
++def alert():
++    return {
++        "rule_id": "HVAC_HIGH_TEMP", "severity": "WARNING", "detection_method": "THRESHOLD",
++        "asset_id": 1, "summary": "Temperature alert",
++        "first_ts": "2026-11-22T12:00:00+00:00", "last_ts": "2026-11-22T12:00:00+00:00",
++        "evidence": {"thresholds": {}, "facts": {}, "event_count": 0, "events": []},
++    }
++
++
++class DatabaseWithoutMigration012Tests(unittest.TestCase):
++    def test_missing_state_table_returns_no_context_without_further_queries(self):
++        cur = RecordingCursor(table_name=None)
++        self.assertIsNone(alert_evidence_context(cur, alert()))
++        self.assertEqual(len(cur.statements), 1)
++        self.assertIn("to_regclass('public.asset_state_current')", cur.statements[0])
++
++    def test_explanation_still_works_when_context_is_absent(self):
++        data = alert()
++        data["_g3_evidence"] = None  # what pipeline.explain_alert stores for a pre-012 database
++        response = validation.explain_alert(data, {"name": "AHU-1", "system_type": "HVAC", "zone": "Plant"},
++                                            use_llm=False)
++        self.assertIn("answer", response)
++        self.assertIn("validation", response)
++
++
++class PrivateEvidenceStaysPrivateTests(unittest.TestCase):
++    def test_g3_evidence_is_not_in_the_public_response(self):
++        data = alert()
++        data["_g3_evidence"] = {"schema_version": 1, "series_freshness": [], "cited_rows": [],
++                                "uncertain_evidence_refs": []}
++        response = validation.explain_alert(data, {"name": "AHU-1", "system_type": "HVAC", "zone": "Plant"},
++                                            use_llm=False)
++        self.assertNotIn("_g3_evidence", response)
++        self.assertNotIn("_g3_evidence", json.dumps(response, default=str))
++
++
++if __name__ == "__main__":
++    unittest.main()

@@ -45,6 +45,16 @@ def _system(value):
     return code
 
 
+def _building_id(conn, value):
+    """Resolve an optional building_code filter; omitted filters retain all-building behavior."""
+    if value in (None, ""):
+        return None
+    row = conn.execute("SELECT building_id FROM buildings WHERE building_code=%s", (value,)).fetchone()
+    if row is None:
+        raise HTTPException(400, f"Unknown building_code: {value}.")
+    return row["building_id"]
+
+
 def _window(conn, hours):
     """[start, end_exclusive) of `hours` hours ending at the latest stored record."""
     if not 1 <= hours <= MAX_HOURS:
@@ -100,15 +110,17 @@ def create_router(open_ro=core.open_readonly):
 
     # ------------------------------------------------------------------ overview
     @router.get("/dashboard/overview", summary="System tiles and KPI cards")
-    def overview(hours: int = Query(24), system_type: str | None = Query(None)):
+    def overview(hours: int = Query(24), system_type: str | None = Query(None),
+                 building: str | None = Query(None)):
         code = _system(system_type)
         try:
             with open_ro() as conn:
                 start, end, last = _window(conn, hours)
+                building_id = _building_id(conn, building)
                 # tiles: always the five systems, so the page can offer them as filters
                 systems = []
                 for sys_code in SYSTEM_CODES:
-                    params = {"system": sys_code, "building": None, "start": start, "end": end}
+                    params = {"system": sys_code, "building": building_id, "start": start, "end": end}
                     n = core._monitored_assets(conn, params)
                     c = core._asset_status_counts(conn, params)
                     if n == 0 or c["unknown"] == n:
@@ -124,7 +136,7 @@ def create_router(open_ro=core.open_readonly):
                                     "unknown": c["unknown"]})
 
                 summary = core.get_dashboard_summary(conn, system_type=code, start_time=core.format_ts(start),
-                                                     end_time=core.format_ts(end))
+                                                     end_time=core.format_ts(end), building_id=building_id)
                 k = summary["kpis"]
                 d = core.KPI_DEFINITIONS
                 sc = k["healthy_assets_pct"]["status_counts"]
@@ -146,9 +158,11 @@ def create_router(open_ro=core.open_readonly):
                     card("heartbeat_compliance", f"{k['heartbeat_compliance']['received']} of "
                                                  f"{k['heartbeat_compliance']['expected']} expected"),
                 ]
-                inc = conn.execute("""SELECT count(*) FILTER (WHERE status <> 'resolved') AS open_n,
-                                             count(*) FILTER (WHERE status <> 'resolved' AND severity='critical') AS crit_n
-                                      FROM incidents""").fetchone()
+                inc = conn.execute("""SELECT count(*) FILTER (WHERE i.status <> 'resolved') AS open_n,
+                                             count(*) FILTER (WHERE i.status <> 'resolved' AND i.severity='critical') AS crit_n
+                                      FROM incidents i JOIN locations il USING (location_id)
+                                      WHERE (%(building)s::bigint IS NULL OR il.building_id=%(building)s)""",
+                                   {"building": building_id}).fetchone()
                 kpis.append({"key": "open_incidents", "label": "Open incidents", "value": inc["open_n"],
                              "unit": "incidents", "sub": f"{inc['crit_n']} critical",
                              "definition": "Incidents that are not resolved (open or acknowledged), whatever the "
@@ -166,11 +180,13 @@ def create_router(open_ro=core.open_readonly):
                     JOIN alerts al ON al.incident_id = i.incident_id
                     JOIN assets a ON a.asset_id = al.asset_id
                     JOIN system_types st ON st.system_type_id = a.system_type_id
+                    JOIN locations il ON il.location_id = i.location_id
                     WHERE (%(system)s::text IS NULL OR st.code = %(system)s::text)
+                      AND (%(building)s::bigint IS NULL OR il.building_id = %(building)s::bigint)
                     GROUP BY a.asset_id, a.name, st.code
                     HAVING count(DISTINCT i.incident_id) > 0
                     ORDER BY st.code, a.name
-                """, {"system": code}).fetchall()
+                """, {"system": code, "building": building_id}).fetchall()
                 incident_bars = [
                     {"asset_id": r["asset_id"], "asset_name": r["asset_name"],
                      "system_type": SYSTEM_TO_UI[r["system"]], "resolved": int(r["resolved"]),
@@ -189,15 +205,18 @@ def create_router(open_ro=core.open_readonly):
 
     # ------------------------------------------------------------------ trends
     @router.get("/dashboard/trends", summary="Time series for the charts")
-    def trends(hours: int = Query(24), system_type: str | None = Query(None)):
+    def trends(hours: int = Query(24), system_type: str | None = Query(None),
+               building: str | None = Query(None)):
         code = _system(system_type)
         try:
             with open_ro() as conn:
                 start, end, last = _window(conn, hours)
+                building_id = _building_id(conn, building)
                 size = _bucket_minutes(hours)
                 n_buckets = math.ceil(hours * 60 / size)
                 buckets = [start + timedelta(minutes=size * i) for i in range(n_buckets)]
-                p = {"start": start, "end": end, "size": size * 60.0, "system": code}
+                p = {"start": start, "end": end, "size": size * 60.0, "system": code,
+                     "building": building_id}
                 idx = "floor(extract(epoch FROM (x.ts - %(start)s)) / %(size)s)::int"
 
                 ev = conn.execute(f"""
@@ -206,6 +225,8 @@ def create_router(open_ro=core.open_readonly):
                     JOIN assets a USING (asset_id) JOIN system_types st USING (system_type_id)
                     WHERE x.ts >= %(start)s AND x.ts < %(end)s AND et.name <> ALL(%(skip)s)
                       AND (%(system)s::text IS NULL OR st.code = %(system)s::text)
+                      AND (%(building)s::bigint IS NULL OR EXISTS
+                           (SELECT 1 FROM locations lb WHERE lb.location_id=a.location_id AND lb.building_id=%(building)s))
                     GROUP BY 1, 2""", dict(p, skip=list(NOT_COUNTED_EVENTS))).fetchall()
                 by_system = {SYSTEM_TO_UI[c]: [0] * n_buckets for c in SYSTEM_CODES if code in (None, c)}
                 for r in ev:
@@ -218,6 +239,8 @@ def create_router(open_ro=core.open_readonly):
                         FROM v_telemetry_valid x JOIN metric_types m USING (metric_id)
                         JOIN assets a USING (asset_id) JOIN system_types st USING (system_type_id)
                         WHERE x.ts >= %(start)s AND x.ts < %(end)s AND m.name = %(metric)s AND st.code = %(sc)s
+                          AND (%(building)s::bigint IS NULL OR EXISTS
+                               (SELECT 1 FROM locations lb WHERE lb.location_id=a.location_id AND lb.building_id=%(building)s))
                         GROUP BY 1""", dict(p, metric=metric, sc=system_code)).fetchall()
                     avg, mx = [None] * n_buckets, [None] * n_buckets
                     for r in rows:
@@ -230,7 +253,11 @@ def create_router(open_ro=core.open_readonly):
                 denied = [0] * n_buckets
                 for r in conn.execute(f"""
                         SELECT {idx} AS b, count(*) AS n FROM event_records x JOIN event_types et USING (event_type_id)
-                        WHERE x.ts >= %(start)s AND x.ts < %(end)s AND et.name = 'access_denied' GROUP BY 1""", p):
+                        JOIN assets a USING (asset_id)
+                        WHERE x.ts >= %(start)s AND x.ts < %(end)s AND et.name = 'access_denied'
+                          AND (%(building)s::bigint IS NULL OR EXISTS
+                               (SELECT 1 FROM locations lb WHERE lb.location_id=a.location_id AND lb.building_id=%(building)s))
+                        GROUP BY 1""", p):
                     if 0 <= r["b"] < n_buckets:
                         denied[r["b"]] = r["n"]
                 top_rows = conn.execute("""
@@ -239,6 +266,8 @@ def create_router(open_ro=core.open_readonly):
                     JOIN assets a USING (asset_id) JOIN system_types st USING (system_type_id)
                     WHERE x.ts >= %(start)s AND x.ts < %(end)s AND et.name <> ALL(%(skip)s)
                       AND (%(system)s::text IS NULL OR st.code = %(system)s::text)
+                      AND (%(building)s::bigint IS NULL OR EXISTS
+                           (SELECT 1 FROM locations lb WHERE lb.location_id=a.location_id AND lb.building_id=%(building)s))
                     GROUP BY a.asset_id, a.name
                     ORDER BY n DESC, a.name
                     LIMIT 10""", dict(p, skip=list(NOT_COUNTED_EVENTS))).fetchall()
@@ -259,11 +288,13 @@ def create_router(open_ro=core.open_readonly):
                 "top_assets": top_assets}
     # ------------------------------------------------------------------ equipment health
     @router.get("/dashboard/equipment-health", summary="One row per asset")
-    def equipment_health(hours: int = Query(24), system_type: str | None = Query(None)):
+    def equipment_health(hours: int = Query(24), system_type: str | None = Query(None),
+                         building: str | None = Query(None)):
         code = _system(system_type)
         try:
             with open_ro() as conn:
                 start, end, last = _window(conn, hours)
+                building_id = _building_id(conn, building)
                 pair_values = ", ".join("('%s', '%s')" % pair for pair in core.FAULT_RECOVERY_PAIRS)
                 paired_event_types = [event_type for pair in core.FAULT_RECOVERY_PAIRS for event_type in pair]
                 rows = conn.execute(f"""
@@ -271,7 +302,8 @@ def create_router(open_ro=core.open_readonly):
                         SELECT a.asset_id, a.name, st.code AS system, b.name AS building, l.floor, l.name AS zone
                         FROM assets a JOIN system_types st USING (system_type_id)
                         JOIN locations l USING (location_id) JOIN buildings b USING (building_id)
-                        WHERE (%(system)s::text IS NULL OR st.code = %(system)s::text)),
+                        WHERE (%(system)s::text IS NULL OR st.code = %(system)s::text)
+                          AND (%(building)s::bigint IS NULL OR l.building_id=%(building)s::bigint)),
                     fault_pairs(fault_type, recovery_type) AS (VALUES {pair_values}),
                     latest_fault_state AS (
                         SELECT DISTINCT ON (x.asset_id, fp.fault_type)
@@ -343,7 +375,7 @@ def create_router(open_ro=core.open_readonly):
                     LEFT JOIN active_pair_fault_stats ap USING (asset_id) LEFT JOIN seen USING (asset_id)
                     LEFT JOIN active_alert_stats aa USING (asset_id)
                     ORDER BY s.system, s.name""",
-                                    {"system": code, "start": start, "end": end, "skip": list(NOT_COUNTED_EVENTS),
+                                    {"system": code, "building": building_id, "start": start, "end": end, "skip": list(NOT_COUNTED_EVENTS),
                                      "paired_types": paired_event_types,
                                      "faults": list(FAULT_EVENTS)}).fetchall()
         except core.NoDataError as exc:
@@ -379,7 +411,7 @@ def create_router(open_ro=core.open_readonly):
     @router.get("/alerts", summary="Stored alerts, newest first")
     def list_alerts(limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0),
                     severity: str | None = Query(None), system_type: str | None = Query(None),
-                    status: str | None = Query(None)):
+                    status: str | None = Query(None), building: str | None = Query(None)):
         code = _system(system_type)
         if severity and severity.lower() not in ("info", "warning", "critical"):
             raise HTTPException(400, "severity must be INFO, WARNING or CRITICAL.")
@@ -387,11 +419,14 @@ def create_router(open_ro=core.open_readonly):
             raise HTTPException(400, "status must be OPEN, ACKNOWLEDGED or RESOLVED.")
         where = """WHERE (%(sev)s::text IS NULL OR al.severity = %(sev)s::text)
                      AND (%(sys)s::text IS NULL OR st.code = %(sys)s::text)
-                     AND (%(st)s::text IS NULL OR al.status = %(st)s::text)"""
+                     AND (%(st)s::text IS NULL OR al.status = %(st)s::text)
+                     AND (%(building)s::bigint IS NULL OR EXISTS
+                          (SELECT 1 FROM locations lb WHERE lb.location_id=a.location_id AND lb.building_id=%(building)s))"""
         p = {"sev": severity.lower() if severity else None, "sys": code, "st": status.lower() if status else None,
-             "limit": limit, "offset": offset}
+             "building": None, "limit": limit, "offset": offset}
         try:
             with open_ro() as conn:
+                p["building"] = _building_id(conn, building)
                 total = conn.execute(f"""SELECT count(*) AS n FROM alerts al JOIN assets a USING (asset_id)
                                          JOIN system_types st USING (system_type_id) {where}""", p).fetchone()["n"]
                 rows = conn.execute(ALERT_SQL + f" {where} ORDER BY al.first_ts DESC, al.alert_id DESC "
