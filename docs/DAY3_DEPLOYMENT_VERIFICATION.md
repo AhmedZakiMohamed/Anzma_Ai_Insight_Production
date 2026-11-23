@@ -30,7 +30,7 @@ The readiness probe returned HTTP 200 with `{"status":"ready","database":"up"}`.
 | API/database readiness | Verified | `/ready` returned 200 and database status `up`. DB container reported healthy. |
 | Freshness worker | Running when the `freshness` profile is enabled | Existing service; no external sensor source has been connected. |
 | Deterministic AI fallback | Verified | S1 fallback path succeeded with all 14 evidence links resolved. |
-| Browser chat using Qwen | Operator-confirmed successful | Operator reported a successful Qwen response in browser chat; model/source metadata was not captured in the evidence package. |
+| Browser chat using Qwen | Team-confirmed working on teammate's laptop | User reports Qwen works in browser chat on a teammate's laptop. Exact model/runtime configuration and independent reproduction are not captured in this evidence package. |
 | S1 live alert-explanation inference | Not verified successfully | This separate scripted path exceeded the request window in two attempts and used fallback. |
 
 ## Installation rehearsal
@@ -44,18 +44,18 @@ Limit: the rehearsal reused an already-provisioned Ollama model volume to avoid 
 - Main Compose project and existing user ports were retained. Do not start a second project against the same host ports.
 - The S1 tests used a temporary `anzma_e2e` database in the running PostgreSQL container and removed it after testing. The application’s `anzma` database was not the S1 test target.
 - The dashboard’s current operational data is seed/legacy data. There is no registered live ingestion source or connected external building sensor in this verification.
-- The Compose Ollama service is healthy. The operator reports that Qwen answered successfully in browser chat; service health alone does not prove model use, and the response's model/source metadata was not captured for independent review.
+- The team reports that Qwen works in browser chat on a teammate's laptop. The exact model/runtime configuration and independent reproduction are not captured here. Compose service health alone does not prove inference behavior.
 - The scripted S1 alert-explanation path remains unresolved: it exceeded the request window and used fallback in both recorded attempts. This does not negate the separate browser-chat success.
 - Windows host reported an NVIDIA GeForce GTX 1650 with 4 GB. GPU passthrough to Docker/Ollama was not verified; Ollama logs showed CPU work during the long model load.
 
 ## External Ollama configuration
 
-The repository can be configured to call an Ollama endpoint outside the Compose-managed runtime through environment configuration. This is a supported deployment option only when the endpoint is reachable from the API container, the requested model is installed there, and network/security settings permit access. This environment’s external-Ollama path was not independently tested. The Compose-managed Ollama service is present; the operator reports successful Qwen use in browser chat, while the separate S1 alert-explanation inference still needs resolution.
+The repository can be configured to call an Ollama endpoint outside the Compose-managed runtime through environment configuration. This is a supported deployment option only when the endpoint is reachable from the API container, the requested model is installed there, and network/security settings permit access. This environment’s external-Ollama path was not independently tested. The team reports successful Qwen use in browser chat on a teammate's laptop, while the separate S1 alert-explanation inference fell back in the recorded attempts.
 
 ## Known installation limitations
 
 1. A completely empty Ollama volume/model-download path has not been rehearsed end to end.
-2. The scripted S1 live alert-explanation path returned deterministic fallback after model loading exceeded the request window, even though browser chat was reported successful. Record and independently review both paths separately.
+2. The scripted S1 live alert-explanation path returned deterministic fallback after model loading exceeded the request window. This is distinct from the team-reported successful browser chat. Reproduce and review both paths separately if both are in release scope.
 3. Docker GPU access is unverified. Do not infer container GPU acceleration from the Windows host GPU listing.
 4. No independent clean-machine install or recorded demonstration was supplied for review.
 5. Commit `60579a0` identifies the current application source, but it is not designated as the final release candidate because acceptance work remains open.

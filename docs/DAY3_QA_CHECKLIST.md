@@ -3,6 +3,14 @@
 **Purpose:** Let a reviewer who did not build the feature reproduce the installation and functional checks, inspect their evidence, and record a clear pass/fail result.
 **Application code to reproduce:** `60579a0f4029c4f3b49376abc338d9f34baac0c3` on `main`. This is not yet designated as the release candidate. Repeat these steps against the final reviewed commit before acceptance.
 
+## Demo release gates (all required)
+
+- [ ] **Clean-install rehearsal:** on a fresh laptop or isolated Compose project, use empty PostgreSQL and Ollama model volumes; confirm install, model provisioning, `/ready`, login, dashboard, and restart persistence. Record machine specs and install evidence. Do not alter or reuse the active `anzma-core` project/volumes.
+- [ ] **Final regression:** run the approved regression suites against the exact release-candidate commit and an isolated validation database; record commands, results, and artifacts. Historical results from another commit do not satisfy this gate.
+- [ ] **Independent walkthrough:** a reviewer who did not implement the release follows this checklist, including install and dashboard workflows, and records Pass/Fail with evidence and open defects.
+
+Detailed procedures are in sections 2–6 below. All three gates must pass before calling the installable demo release-verified.
+
 ## 1. Record the test environment
 
 - [ ] Record reviewer, date/time, OS, Docker Desktop/Engine version, CPU/RAM, and available GPU/runtime.
@@ -55,7 +63,7 @@ docker exec anzma-core-api-1 python /app/tests/scenarios/e2e_s1.py --build --llm
 - [ ] Unit suite passes on the final commit.
 - [ ] Frontend API suite passes on the final commit.
 - [ ] Fallback scenario passes with the model unavailable; evidence references resolve.
-- [ ] Record the operator-reported successful Qwen browser chat separately, including the visible source/model label and response evidence.
+- [ ] Verify browser chat availability and separately review answer quality using representative operational questions; record prompt, model/source, retrieved facts, citations, correctness, and abstention behavior, including the operator-reported incorrect-answer cases.
 - [ ] Live S1 alert-explanation scenario produces an actual model answer with a model identifier. A test that returns fallback does **not** pass this specific live alert-explanation check even if its general scenario assertions pass.
 - [ ] Confirm isolated integration/E2E data was not written into the production `anzma` database.
 - [ ] Run the remaining approved regression suites on the final commit; historical pre-change counts are not substitutes.

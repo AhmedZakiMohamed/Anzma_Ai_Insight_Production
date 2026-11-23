@@ -1,6 +1,6 @@
 # Day 3 Known Issues and Open Items
 
-**Updated:** 22 November 2026
+**Updated:** 23 November 2026
 **Validated application code commit:** `60579a0f4029c4f3b49376abc338d9f34baac0c3` on `main`.
 **Release status:** Not ready for final Day 3 acceptance. The code commit exists but is not designated as the release candidate.
 
@@ -8,9 +8,12 @@
 
 | Priority | Issue | Impact | Required resolution |
 |---|---|---|---|
-| High | The scripted S1 live alert-explanation path did not complete successfully. | Those runs returned fallback with `model_used=None`. The operator separately confirmed that Qwen answered successfully in browser chat, but the response metadata/recording was not supplied for independent review. | Preserve both results as separate paths. Capture the browser chat's source/model label, diagnose the S1 alert-path latency, and rerun that scenario with model/evidence details. Keep deterministic fallback available. |
+| High | Browser chat returns responses that the operator reports are sometimes incorrect. | A responsive model is not necessarily a trustworthy assistant; users may act on an inaccurate answer. No representative prompt/answer examples have been captured for diagnosis. | Capture incorrect answers with the prompt, retrieved facts, model/source label, and evidence references. Determine whether the failure is retrieval/data selection, model reasoning, or grounding; add these cases to a repeatable answer-quality review and require evidence-backed answers or an explicit abstention. |
+| High (feature-specific) | The scripted S1 live alert-explanation path did not complete successfully. | Those runs returned fallback with `model_used=None`. The team reports Qwen works in browser chat on a teammate's laptop; that does not establish that the separate S1 explanation path works. | Preserve both results as separate paths. Record the teammate's working model/runtime configuration. Diagnose and rerun S1 only if live alert explanations are part of the release acceptance scope. Keep deterministic fallback available. |
 | High | No continuous browser demonstration recording has been supplied for review. | The operator reports the browser workflow works, but the CEO’s recorded-demo acceptance cannot be independently checked. | Record and provide one continuous browser run covering dashboard, incident actions/counters, filters, assistant, and supporting evidence. |
-| High | No final release-candidate commit exists; source tree has uncommitted modifications. | Results are not bound to a reproducible immutable code revision. | Review all changes, run the approved regression suite, commit the final tree, and record the exact commit in all release artifacts. |
+| High | Clean-install rehearsal remains open. | Current run used the active installation and does not prove first-start behavior from empty database and model volumes. | Run the installer on a fresh laptop or isolated Compose project with empty volumes; capture provisioning, readiness, login, and restart-persistence evidence without touching active `anzma-core` data. |
+| High | Final regression on a release candidate remains open. | Previous suites are tied to earlier commits; the current changes are uncommitted and results are not bound to one reproducible release revision. | Select and record the exact candidate commit, run approved regression suites in an isolated validation environment, fix failures, and record outputs against that commit. |
+| High | Independent installation and dashboard walkthrough remains open. | The team has not supplied an independent reviewer result for the current release candidate. | Have a reviewer who did not implement the release follow `DAY3_QA_CHECKLIST.md` and record Pass/Fail, evidence, and deviations. |
 
 ## Deployment and environment limitations
 

@@ -118,9 +118,48 @@ The **Alert Center** lists detected alert records that are still open or acknowl
 
 ### Requirements
 
-- Docker Desktop or Docker Engine with Compose v2.
-- A local `.env` file with a non-empty PostgreSQL password and a unique API bearer secret.
+- **Demonstrated team setup:** the demo stack and `qwen2.5:3b` were running on a team laptop with 8 GB RAM. A user-provided `docker stats` snapshot showed a 3.76 GiB Docker memory limit and about 968 MiB across API, database, freshness, and Ollama containers at that instant (Ollama about 829 MiB). This is an observed working configuration, not a cross-laptop guaranteed minimum or an inference peak measurement.
+- **Recommended for smoother use:** 64-bit Intel/AMD laptop, 4 CPU cores, 16 GB RAM, and 30 GB free disk space. CPU-core count and disk target are planning guidance, not measured requirements.
+- Docker Desktop for Windows lists 8 GB system RAM as a WSL 2 hardware requirement. The team run demonstrates that this project can run at 8 GB on at least one laptop; performance and headroom will vary by machine and concurrent workload.
+- Windows 11 64-bit with hardware virtualization enabled, current WSL 2, Docker Desktop, and Docker Compose v2. The one-command installer below is for Windows PowerShell. Docker Desktop's current Windows requirements include a 64-bit SLAT-capable processor, virtualization, and WSL 2 version 2.1.5 or later ([Docker Desktop requirements](https://docs.docker.com/desktop/setup/install/windows-install/)).
+- First installation needs internet access to retrieve container images and the Qwen model. The configured `qwen2.5:3b` artifact is listed as about 1.9 GB by Ollama; allow additional disk for Docker images, build cache, and database growth ([Ollama Qwen2.5 model library](https://ollama.com/library/qwen2.5)).
+- A local `.env` file with a non-empty PostgreSQL password and a unique API bearer secret; the installer can generate these when blank.
 - The default host ports 5432 (PostgreSQL), 8000 (API), and 11434 (Ollama) must be available, or changed in `.env` before startup.
+
+**GPU:** Not required by the current Compose configuration. The model can run through Ollama without a configured GPU, but response speed depends on the laptop and the GPU path has not been verified for this project. We have not measured peak RAM during model generation or Qwen response latency on the 8 GB laptop.
+
+### One-command Windows demo install
+
+From a PowerShell window at the repository root, run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install_demo.ps1
+```
+
+The installer creates `.env` from the example only when `.env` does not exist. It fills blank PostgreSQL and dashboard secrets with random values, starts the Compose project `anzma-demo` with the dashboard and freshness worker, waits for `/ready`, and waits for the configured Ollama model pull to finish. It preserves existing `.env` settings and volumes. If a required port is already occupied, set `DB_HOST_PORT`, `API_HOST_PORT`, or `OLLAMA_HOST_PORT` in `.env` and rerun. To sign in, copy `ANZMA_API_TOKEN` from `.env` into the dashboard login prompt; keep `.env` private and out of source control.
+
+For an isolated rehearsal, create a separate environment file with unused host ports and pass it with a unique Compose project name:
+
+```powershell
+$qaEnv = Join-Path $env:TEMP 'anzma-demo-qa.env'
+$qaConfig = @('PGPASSWORD=', 'ANZMA_API_TOKEN=', 'DB_HOST_PORT=15441', 'API_HOST_PORT=18041', 'OLLAMA_HOST_PORT=11441', 'OLLAMA_MODEL=qwen2.5:3b')
+[System.IO.File]::WriteAllLines($qaEnv, $qaConfig, [System.Text.UTF8Encoding]::new($false))
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install_demo.ps1 -ProjectName anzma-demo-qa -EnvironmentFile $qaEnv
+```
+
+The installer generates the blank secrets. The separate project uses separate database and model volumes; remove only those explicitly named QA resources after reviewing the evidence. Do not reuse production or active-demo project names when validating a clean installation.
+
+This installs the synthetic demo dataset. It does not configure or claim a live building data source.
+
+To inspect or stop this installation, use the same Compose project name:
+
+```powershell
+docker compose --env-file .env -p anzma-demo --profile freshness -f deploy/compose/docker-compose.yml ps
+docker compose --env-file .env -p anzma-demo --profile freshness -f deploy/compose/docker-compose.yml logs --tail 100
+docker compose --env-file .env -p anzma-demo --profile freshness -f deploy/compose/docker-compose.yml down
+```
+
+Do not add `-v` to the stop command; that removes the database and downloaded model volumes.
 
 ### Start
 
@@ -154,7 +193,7 @@ To rebuild only the API after changing application or dashboard files:
 docker compose --env-file .env -p anzma-insight -f deploy/compose/docker-compose.yml up -d --build api
 ```
 
-The PostgreSQL initialization scripts run only when the database volume is empty. Existing volumes are not reseeded automatically; apply migrations 006–009 to an existing database with the documented runner in [`docs/DATA_MIGRATION_PLAN.md`](docs/DATA_MIGRATION_PLAN.md). Migration 009 adds nullable building schedules and freshness expectation/gap/current-state schema; it does not run a freshness job or change application behavior. Avoid `down -v` for routine restarts: it deletes the local PostgreSQL data and downloaded Ollama models. Compose binds PostgreSQL and Ollama to loopback by default. Compose services and initialization mounts are defined in [`deploy/compose/docker-compose.yml`](deploy/compose/docker-compose.yml).
+The PostgreSQL initialization scripts run only when the database volume is empty. Existing volumes are not reseeded automatically; apply migrations 006–011 to an existing database with the documented runner in [`docs/DATA_MIGRATION_PLAN.md`](docs/DATA_MIGRATION_PLAN.md). Migrations 009–011 add building schedules, freshness expectations and gap lifecycle, and source-liveness storage. Run the opt-in freshness evaluator with the `freshness` Compose profile; it is not started by the default command above. Avoid `down -v` for routine restarts: it deletes the local PostgreSQL data and downloaded Ollama models. Compose binds PostgreSQL and Ollama to loopback by default. Compose services and initialization mounts are defined in [`deploy/compose/docker-compose.yml`](deploy/compose/docker-compose.yml).
 
 If Ollama or its model is unavailable, database-backed dashboard features continue to work and explanations can use the deterministic fallback. The AI runtime is optional for normal dashboard operation.
 

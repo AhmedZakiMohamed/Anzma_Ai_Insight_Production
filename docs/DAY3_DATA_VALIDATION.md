@@ -48,7 +48,8 @@ The earlier database review found a unique alert constraint/index and no duplica
 ## AI explanation and recommendation validation
 
 - Deterministic fallback completed the S1 scenario and retained supporting evidence links (14/14 resolved).
-- The operator reports that Qwen answered successfully in browser chat. The chat response's model/source metadata was not supplied for independent verification.
+- The team reports that Qwen works in browser chat on a teammate's laptop. Exact model/runtime settings and independent reproduction are not captured in the validation evidence.
+- The operator verified dashboard login and chat operation, but reports that some Qwen answers were incorrect. Representative prompts, outputs, retrieved facts, and a structured quality review have not yet been recorded; chat availability must not be treated as answer-quality acceptance.
 - Separate live-Qwen S1 alert-explanation attempts returned `ai_source=fallback` and `model_used=None`. This scripted alert path was not demonstrated successfully and should not be conflated with the reported browser-chat success.
 - Current safety behavior marks corrective actions provisional unless a real approver and approval reference are present; draft actions are excluded from recommendations.
 - The grounding indicator reports the configured evidence checks. It is not proof of semantic correctness.
@@ -61,7 +62,7 @@ The earlier database review found a unique alert constraint/index and no duplica
 | Unit suite `test_day2_ahmed.py` | 29/29 passed | Latest recorded run after Task 4 safety changes. |
 | Frontend API suite `test_frontend_api.py` | 42/42 passed | Latest recorded run after Task 4 changes with test auth environment set. |
 | S1 fallback scenario | 14/14 passed | Isolated test DB, later dropped. |
-| Browser chat using Qwen | Operator-reported successful | Model/source metadata and recording were not supplied for independent verification. |
+| Browser chat using Qwen | Responds; quality issue reported | Operator verified use but reports some answers were incorrect. No examples or repeatable quality score are captured yet. |
 | S1 live-model alert explanation | Fell back | This distinct path is not a live-Qwen pass, even though scenario assertions accepted fallback. |
 | Other suites | 43/43 and 23/23 passed | Historical runs before latest Task 4 edits; rerun before release. |
 
@@ -70,6 +71,6 @@ The earlier database review found a unique alert constraint/index and no duplica
 1. Re-query event/telemetry/alert/incident counts and evidence references on the final immutable release-candidate database snapshot.
 2. Recheck dashboard state and time filters through the browser recording.
 3. Confirm the bandwidth thresholds and obtain a written approval artifact; do not silently modify behavior.
-4. Capture and inspect the browser chat's model/source label and answer evidence; separately complete the live-Qwen S1 alert explanation and inspect its model ID, input measurements, grounding evidence, and recommendations.
+4. Capture representative incorrect browser-chat responses with model ID, prompt, retrieved facts, and references; review factual correctness and grounding. Separately complete the live-Qwen S1 alert explanation only if that feature is in release scope.
 5. Have an independent reviewer compare displayed units and states with stored records.
 6. Keep external connector and live-sensor claims out of the release notes until a real source is configured and verified.

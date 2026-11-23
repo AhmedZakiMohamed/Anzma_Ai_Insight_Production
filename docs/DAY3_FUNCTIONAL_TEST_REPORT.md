@@ -7,9 +7,9 @@
 
 ## Executive result
 
-The operator reports that the browser workflow is working and that Qwen successfully responded in the browser chat. The automated S1 alert-explanation scenario is a separate path: both recorded live-model attempts returned fallback after Qwen did not answer within the request window. Therefore, browser chat success is recorded as **operator-confirmed**, while the automated S1 live alert-explanation result remains **not passed**. A recording or response metadata was not provided for independent review, so the browser Qwen source/model label still needs to be captured in the demonstration evidence.
+The team reports that Qwen responds in browser chat on a teammate's laptop, and the operator verified the dashboard workflow. The operator also observed some incorrect chat answers; no prompt/answer examples or structured quality evaluation are captured yet. Therefore, browser chat availability is **confirmed by the operator**, but answer quality is **not accepted**. The automated S1 alert-explanation scenario is separate: both recorded live-model attempts returned fallback after Qwen did not answer within the request window, so that path remains **not passed**.
 
-This is a working validation report, not a release sign-off. The reports and evidence are tied to the source base above, but the final dirty worktree has no immutable commit identifier.
+This is a working validation report, not a release sign-off. Its application evidence is tied to source commit `60579a0`; the documentation-only follow-up is commit `bdd8d3d`. No release-candidate commit has been designated.
 
 ## Scope and tested environment
 
@@ -29,9 +29,9 @@ This is a working validation report, not a release sign-off. The reports and evi
 | Acknowledge and resolve incident | Operator reports passed | Browser demonstration reported complete; no recording artifact available for independent confirmation. |
 | Verify counters update | Operator reports passed | Browser demonstration reported complete; no recording artifact available for independent confirmation. |
 | Apply system/time filters and verify consistency | Operator reports passed | Browser demonstration reported complete; no recording artifact available for independent confirmation. |
-| Ask assistant an operational question and inspect references | Partially verified | Operator confirmed the browser chat returned a successful Qwen response. Inspecting its source/model metadata and supporting references still needs to be captured for independent review. This is distinct from the S1 alert-explanation path below. |
+| Ask assistant an operational question and inspect references | **Not accepted for answer quality** | Operator confirmed the browser workflow and Qwen response, but reports some answers were incorrect. Capture representative prompt/answer/evidence examples and evaluate factual correctness and references. This is distinct from the S1 alert-explanation path below. |
 | Distinguish faults, recovered, historical, unavailable data | Operator reports passed; data checks partial | Current dashboard distinguishes warning/critical/no-data and freshness. Full browser recording is still needed for review. |
-| Browser chat response from Qwen | **Operator-confirmed passed** | User reported that Qwen worked successfully in browser chat. No captured source/model metadata was provided with this report. |
+| Browser chat response from Qwen | **Responds; answer quality unresolved** | Operator verified chat operation and observed incorrect answers. No reviewed example set or quality metrics are included in this evidence package. |
 | S1 live alert explanation from Qwen | **Not passed** | The separate live S1 requests returned `ai_source=fallback`, `model_used=None`. Ollama logs show model load exceeded the request window and the client request was cancelled. |
 | Same scenario with model disabled / deterministic fallback | **Passed** | `tests/scenarios/e2e_s1.py --build`: 14/14 checks passed; all 14 evidence references resolved. |
 
@@ -54,9 +54,9 @@ The current work makes corrective recommendations provisional unless a real appr
 ## Outstanding before acceptance
 
 1. Diagnose Ollama model-load latency and verify whether Docker Desktop passes the host GPU through to the Ollama container. Do not treat the host GTX 1650 as proof that the container is using it.
-2. Capture the browser chat's Qwen source/model identifier and response evidence in the continuous recording.
+2. Capture representative correct and incorrect browser-chat examples with prompt, answer, source records, model identifier, and evidence references; define and run an answer-quality review.
 3. Repeat the live-Qwen S1 alert-explanation scenario and record model identifier, source measurements, grounding result, answer, and recommendations after a real model response is returned.
-4. Supply and review one continuous browser recording covering the required workflow and both distinct AI paths as required by the CEO acceptance criteria.
+4. Record the verified dashboard/login/chat flow. Include the S1 alert-explanation path only if it is in release scope; it is currently known to fall back.
 5. Rerun the full approved regression suite against the final tree, record results, and tie the release package to a new clean Git commit.
 6. Have an independent QA reviewer follow `DAY3_QA_CHECKLIST.md`.
 
