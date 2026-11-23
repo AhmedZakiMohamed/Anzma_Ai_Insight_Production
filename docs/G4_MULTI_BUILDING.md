@@ -40,7 +40,7 @@ PROJECT=anzma-g4-proof-20261123
 COMPOSE_FILE=deploy/compose/docker-compose.yml
 cp deploy/examples/.env.example /tmp/g4.env
 sed -i.bak -e 's/^DB_HOST_PORT=.*/DB_HOST_PORT=19432/' -e 's/^API_HOST_PORT=.*/API_HOST_PORT=19080/' \
-           -e 's/^OLLAMA_HOST_PORT=.*/OLLAMA_HOST_PORT=19434/' -e "s/^ANZMA_API_TOKEN=.*/ANZMA_API_TOKEN=g4-$(openssl rand -hex 8)/" /tmp/g4.env
+           -e 's/^OLLAMA_HOST_PORT=.*/OLLAMA_HOST_PORT=19434/' -e "s/^ANZMA_API_TOKEN=.*/ANZMA_API_TOKEN=g4-$(openssl rand -hex 24)/" /tmp/g4.env
 grep -E '^(DB|API|OLLAMA)_HOST_PORT|^ANZMA_API_TOKEN' /tmp/g4.env
 ```
 
@@ -62,7 +62,12 @@ docker compose --env-file /tmp/g4.env -p "$PROJECT" -f "$COMPOSE_FILE" exec -T a
 ```
 
 4. The public-API isolation proof (one run per fresh database):
-
+**Required dataset:** the hard-coded `legacy_hashes` were recorded on the H0 dataset
+   (2/6/12/8/12/4669/955/19/15; 19 alerts, 15 incidents), not on a database built only from
+   `db/init` (which yields 10 alerts / 8 incidents after detection and will FAIL this check).
+   Restore `~/anzma_backups/anzma_H0_20261118_1956.dump` into the disposable project first
+   (drop/create `anzma`, `pg_restore`, then the runner, which applies 006-013), and confirm the
+   counts above before running the test.
 ```bash
 docker compose --env-file /tmp/g4.env -p "$PROJECT" -f "$COMPOSE_FILE" exec -T \
   -e ANZMA_G4_DISPOSABLE_PROJECT="$PROJECT" api python -m unittest tests.integration.test_multibuilding_g4 -v

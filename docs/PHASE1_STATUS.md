@@ -48,7 +48,50 @@ The projection maps existing dashboard buckets to operational state, derives Cor
 
 ### G4 — multi-building proof
 
-**Status: IMPLEMENTED IN THE WORKING TREE, VERIFICATION PENDING (not DONE).** The optional `building` filter, the dashboard selector and the public-API isolation test are written; none of it has been run on a fresh disposable stack since the last edit. Run order and acceptance checks: `docs/G4_MULTI_BUILDING.md`. Earlier text below describing the missing filter is historical. Migration `013_building_code_required.sql` makes `buildings.building_code` NOT NULL and adds a full unique index. It refuses to guess existing codes and names missing IDs with the exact `ingestion_admin.py register-building` remedy. `scripts/verify_schema.sql` checks the migration ledger, NOT NULL property, and unique index. The runner was exercised on disposable PostgreSQL 16: an unprepared seeded DB failed with the intended actionable error; after registering the two legacy rows, migration 013 applied, then skipped on rerun. H0 restored facts remained `buildings/locations/assets/telemetry/events/alerts/incidents = 2/6/12/4669/955/19/15`; `verify_schema.sql` returned `OVERALL OK`.
+
+**Status: DONE (core verification) — 2026-11-23, disposable project `anzma-g4-proof-final-20261123-1542`, H0 dataset restored.**
+
+The optional `building` filter, dashboard selector, and public-API isolation test are implemented and core verification has passed.
+
+Migration `013_building_code_required.sql` makes `buildings.building_code` NOT NULL and adds a full unique index. It refuses to guess existing codes and provides the exact `ingestion_admin.py register-building` remedy for legacy rows with missing IDs.
+
+`scripts/verify_schema.sql` checks the migration ledger, NOT NULL property, and unique index.
+
+**Migration verification:**
+- An unprepared seeded database failed with the intended actionable error.
+- After registering the two legacy building rows, migration 013 applied successfully.
+- The migration runner was executed again and correctly skipped migration 013 (no-op).
+- `verify_schema.sql` returned `OVERALL OK`.
+
+**H0 baseline and multi-building verification:**
+- Restored the H0 backup into the disposable PostgreSQL database.
+- H0 dataset counts: `buildings/locations/assets/telemetry_records/event_records/alerts/incidents = 2/6/12/4669/955/19/15`.
+- Multi-building isolation test: 2/2 passed.
+- All 8 unfiltered API response hashes matched the pre-change baseline:
+  `overview`, `trends`, `equipment_health`, `alerts`, `incidents`, `freshness`, `liveness`, and `gaps`.
+- Building B (`G4-…`) was ingested without code changes.
+- Freshness verification passed: 1 source ALIVE and 29 data gaps opened.
+
+**Unit tests:**
+- 90 passed, 1 skipped.
+
+**Not re-run against the latest multi-building implementation:**
+- E2: 12 tests.
+- E3: 7 tests.
+- E4a: 5 tests.
+- E4b: 6 tests.
+- E5: 6 tests.
+- G3 integration: 6 tests (requires the `127.0.0.1:25443` disposable harness).
+
+**End-to-end verification:**
+- E2E S1 `--build --llm`: NOT RUN.
+- Live LLM verification: NOT TESTED.
+
+**Known limitation:**
+- The isolation test is single-run per database (KI-020). A fresh disposable database is required before running it again.
+
+**Conclusion:** Core multi-building implementation and isolation verification are complete. The remaining regression suites and end-to-end LLM verification are explicitly outstanding.
+
 
 **G4 evidence:** `deploy/examples/g4_second_building.sql` provisions an example second site with `America/New_York`, 07:00–16:00, separate location and two HVAC assets. The automated disposable test is `ANZMA_G4_DISPOSABLE_PROJECT=anzma-g4-proof-20261123 python -m unittest tests.integration.test_multibuilding_g4 -v` inside that project's API container. Latest run: 2 tests, PASS. It registers a distinct source/key and source-scoped asset mapping, sends telemetry/event/state records plus an empty keepalive batch through `/api/v1/ingest/batches`, verifies `ASSET_NOT_PERMITTED` against an A asset, then runs the real freshness/state pass. Its tested B rows were ALIVE, temperature FRESH, old humidity MISSING with an open `NO_DATA` gap, and an `asset_state_current` row. `/dashboard/equipment-health` showed B with its building name; the global `/dashboard/overview` returned 200. The per-A fixed-window KPI projection and A-filtered alerts/incidents/freshness/source/gap rows had equal canonical hashes before/after ingestion: overview_kpis `34ce2546…`, alerts `16f8c599…`, incidents `a7d9f19a…`, freshness `cb44a4c9…`, sources `4f53cda1…`, gaps `4f53cda1…`.
 
