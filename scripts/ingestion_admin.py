@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from app.adapters.database import db_adapter as da
+from app.domain.identity import IdentityMappings
+from app.repositories.identity_pg import IdentityPostgresStore
 
 
 AUDIT_LOGGER = logging.getLogger("anzma.audit")
@@ -176,33 +178,12 @@ def main() -> int:
                 value = "default (90 days)" if row["max_backdate_days"] is None else f"{row['max_backdate_days']} days"
                 print(f"Back-date limit for {args.source_code}: {value}.")
             else:
-                cur.execute("SELECT source_id, building_id FROM data_sources WHERE source_code = %s", (args.source_code,))
-                source = cur.fetchone()
-                if not source:
-                    raise ValueError("Unknown source code.")
-                cur.execute(
-                    """SELECT a.asset_id FROM assets a JOIN locations l USING (location_id)
-                       WHERE a.asset_code = %s AND l.building_id = %s""",
-                    (args.asset_code, source["building_id"]),
-                )
-                asset = cur.fetchone()
-                if not asset:
-                    raise ValueError("Unknown asset code in the source's building.")
-                cur.execute(
-                    """INSERT INTO asset_external_ids(source_id, external_id, asset_id)
-                       VALUES (%s,%s,%s) ON CONFLICT (source_id, external_id) DO NOTHING
-                       RETURNING asset_id""", (source["source_id"], args.external_id, asset["asset_id"]),
-                )
-                row = cur.fetchone()
-                if row is None:
-                    cur.execute("SELECT asset_id FROM asset_external_ids WHERE source_id=%s AND external_id=%s",
-                                (source["source_id"], args.external_id))
-                    prior = cur.fetchone()
-                    if not prior or prior["asset_id"] != asset["asset_id"]:
-                        raise ValueError("External ID is already mapped to a different asset; mapping was not changed.")
-                    print("Mapping already exists; no change made.")
-                else:
+                result = IdentityMappings(IdentityPostgresStore(cur)).map_asset(
+                    source_code=args.source_code, external_id=args.external_id, asset_code=args.asset_code)
+                if result.created:
                     print(f"Mapped {args.source_code}:{args.external_id} to {args.asset_code}.")
+                else:
+                    print("Mapping already exists; no change made.")
                 conn.commit()
     except Exception:
         if conn is not None:

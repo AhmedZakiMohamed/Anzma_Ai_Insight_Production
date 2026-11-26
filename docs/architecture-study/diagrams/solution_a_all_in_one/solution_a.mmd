@@ -1,0 +1,22 @@
+flowchart LR
+ subgraph SITE[Customer building systems]
+  BMS[BMS · HVAC · energy]
+  SEC[Access control · CCTV/VMS]
+  NET[Network · fire alarm]
+ end
+ CON[Connector layer
+Vendor adapters (future)
+Normalize and map] -->|HTTPS batch + source key| API
+ BMS --> CON
+ SEC --> CON
+ NET --> CON
+ subgraph HOST[Single Linux host · Docker Compose]
+  API[FastAPI · auth · ingestion · tools]
+  CORE[Deterministic analytics · evidence · freshness]
+  PG[(PostgreSQL 16 · persistent volume)]
+  AI[Ollama or vLLM · local model]
+  UI[Dashboard · chat · alerts · reports]
+  API --> CORE --> PG
+  API -->|ModelProvider| AI
+  UI --> API
+ end

@@ -1,0 +1,18 @@
+flowchart LR
+  subgraph SITE[Building site]
+    SYS[BMS · access · VMS · IoT]
+    CON[Site connector / outbound agent]
+    SYS --> CON
+  end
+  subgraph PRIVATE[Customer or provider private cloud / VM]
+    CORE[Anzma AI Insight Core · API + auth]
+    PG[(PostgreSQL · private tenant)]
+    DET[Deterministic analytics · evidence]
+    MODEL[Optional Ollama model]
+    CORE --> PG
+    CORE --> DET
+    CORE --> MODEL
+  end
+  USER[Browser users] -->|HTTPS| CORE
+  CON -->|VPN or outbound TLS · normalized batches| CORE
+  PRIVATE -->|VM, network, backup operations| OWNER[Customer / cloud operator]

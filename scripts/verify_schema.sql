@@ -1,5 +1,5 @@
 -- verify_schema.sql -- READ-ONLY catalog check of a live database against the authoritative schema
--- (base schema -> 003 -> 004 -> 005 -> 006 -> 007 -> 008 -> 009 -> 010 -> 011 -> 012 -> 013; see DATABASE_BASELINE.md). Changes nothing: SELECT only.
+-- (base schema -> 003 -> 004 -> 005 -> 006 -> 007 -> 008 -> 009 -> 010 -> 011 -> 012 -> 013 -> 014; see DATABASE_BASELINE.md). Changes nothing: SELECT only.
 -- Run:  psql -U anzma -d <db> -f verify_schema.sql        (every row must show status = OK)
 -- Exit status of psql is not affected by a failed check; read the status column (final row = overall verdict).
 WITH expected_tables(name) AS (VALUES
@@ -250,6 +250,13 @@ checks AS (
          ((SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='buildings'
              AND column_name='building_code' AND is_nullable='NO')
           + (SELECT count(*) FROM schema_migrations WHERE version='013_building_code_required'))::text
+  UNION ALL SELECT 22, 'event_types has event_class/outage_class/resolves_event_type_id and migration 014 is recorded', '4',
+         ((SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='event_types'
+             AND column_name IN ('event_class','outage_class','resolves_event_type_id'))
+          + (SELECT count(*) FROM schema_migrations WHERE version='014_event_catalogue_pairing'))::text
+  UNION ALL SELECT 23, 'event_types closers resolving a non-opener or a different outage_class', '0',
+         (SELECT count(*) FROM event_types c JOIN event_types o ON o.event_type_id=c.resolves_event_type_id
+           WHERE o.event_class IS DISTINCT FROM 'FAULT_OPEN' OR o.outage_class IS DISTINCT FROM c.outage_class)::text
 )
 SELECT n, check_name, expected, actual,
        CASE WHEN expected LIKE '>=%' THEN CASE WHEN actual::int >= substr(expected,3)::int THEN 'OK' ELSE 'FAIL' END

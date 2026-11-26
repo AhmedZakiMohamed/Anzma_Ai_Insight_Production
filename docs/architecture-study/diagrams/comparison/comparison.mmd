@@ -1,0 +1,13 @@
+flowchart LR
+ A[Solution A
+Single host
+Low operations · one failure domain]
+ B[Solution B
+App + DB + AI servers
+Isolation · more operations]
+ C[Solution C
+On-prem Core + cloud AI
+Provider dependency · prompt egress]
+ A -->|Scale when contention measured| B
+ A -->|Choose only after egress approval| C
+ B -->|Cloud inference alternative| C

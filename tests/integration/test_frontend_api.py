@@ -40,6 +40,15 @@ for _m in ("003_incidents", "004_chat_views", "005_alert_uniqueness", "006_inges
            "010_data_gap_lifecycle", "011_source_liveness"):   # runtime sequence
     DB.execute(sql_file(f"db/migrations/{_m}.sql"))
 
+# Evidence validation requires a resolvable building scope. Assign the same
+# deterministic fixture codes as migration 013 without applying later catalogue
+# changes that this API compatibility test intentionally does not cover.
+DB.execute("""UPDATE buildings SET building_code = CASE name
+             WHEN 'Main Tower' THEN 'MAIN-TOWER'
+             WHEN 'Data Center Annex' THEN 'DATA-CENTER-ANNEX' END
+             WHERE name IN ('Main Tower', 'Data Center Annex')
+               AND (building_code IS NULL OR btrim(building_code) = '')""")
+
 TEST_USER_TOKEN = "integration-test-user-api-token-not-for-deployment"
 os.environ.update(PGHOST=HOST, PGPORT=PORT, PGUSER=USER, PGPASSWORD=PASSWORD, PGDATABASE=TEST_DB,
                   ANZMA_API_TOKEN=TEST_USER_TOKEN,

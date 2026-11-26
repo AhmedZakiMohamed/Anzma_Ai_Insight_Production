@@ -1,0 +1,21 @@
+{
+  "_comment": "Expected event_types state after migration 014 (ADR-0001 follow-ups 1 and 2). Single source for tests/unit/test_event_catalog_parity.py and tests/integration/test_event_catalogue_migration.py. resolves = the opener this closer resolves.",
+  "seed_event_types": ["door_forced","door_held_open","access_denied","link_down","link_up","camera_offline","camera_online","fire_alarm_triggered","alarm_cleared","hvac_fault","hvac_recovered","heartbeat"],
+  "new_event_types": {"door_opened": ["ACCESS_CONTROL"], "access_granted": ["ACCESS_CONTROL"]},
+  "catalogue": {
+    "door_forced":          {"event_class": "ACTIVITY",    "outage_class": null,           "resolves": null},
+    "door_held_open":       {"event_class": "ACTIVITY",    "outage_class": null,           "resolves": null},
+    "access_denied":        {"event_class": "ACTIVITY",    "outage_class": null,           "resolves": null},
+    "door_opened":          {"event_class": "ACTIVITY",    "outage_class": null,           "resolves": null},
+    "access_granted":       {"event_class": "ACTIVITY",    "outage_class": null,           "resolves": null},
+    "heartbeat":            {"event_class": "HEARTBEAT",   "outage_class": null,           "resolves": null},
+    "link_down":            {"event_class": "FAULT_OPEN",  "outage_class": "AVAILABILITY", "resolves": null},
+    "link_up":              {"event_class": "FAULT_CLOSE", "outage_class": "AVAILABILITY", "resolves": "link_down"},
+    "camera_offline":       {"event_class": "FAULT_OPEN",  "outage_class": "AVAILABILITY", "resolves": null},
+    "camera_online":        {"event_class": "FAULT_CLOSE", "outage_class": "AVAILABILITY", "resolves": "camera_offline"},
+    "fire_alarm_triggered": {"event_class": "FAULT_OPEN",  "outage_class": "FAULT",        "resolves": null},
+    "alarm_cleared":        {"event_class": "FAULT_CLOSE", "outage_class": "FAULT",        "resolves": "fire_alarm_triggered"},
+    "hvac_fault":           {"event_class": "FAULT_OPEN",  "outage_class": "FAULT",        "resolves": null},
+    "hvac_recovered":       {"event_class": "FAULT_CLOSE", "outage_class": "FAULT",        "resolves": "hvac_fault"}
+  }
+}

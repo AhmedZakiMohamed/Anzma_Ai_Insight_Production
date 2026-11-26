@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+<defs><marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto"><path d="M1,1 L10,6 L1,11 z" fill="#2864e8"/></marker><filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#12264c" flood-opacity=".10"/></filter></defs>
+<rect width="1600" height="1000" fill="#f5f7fc"/>
+<text x="52" y="58" font-family="Arial,sans-serif" font-size="31" font-weight="700" fill="#10234e">Architecture alternatives · deployment at a glance</text>
+<text x="52" y="91" font-family="Arial,sans-serif" font-size="16" fill="#52627d">Choose by data policy, service ownership, isolation needs and measured AI workload—not by “enterprise” labels</text>
+<rect x="50" y="150" width="470" height="710" rx="24" fill="#edf4ff" fill-opacity=".34" stroke="#cdd7e8" stroke-width="2"/>
+<text x="70" y="182" font-family="Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="1.1" fill="#52627d">A · SINGLE HOST</text>
+<rect x="565" y="150" width="470" height="710" rx="24" fill="#edf2fb" fill-opacity=".34" stroke="#cdd7e8" stroke-width="2"/>
+<text x="585" y="182" font-family="Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="1.1" fill="#52627d">B · SEPARATED TIERS</text>
+<rect x="1080" y="150" width="470" height="710" rx="24" fill="#f2edff" fill-opacity=".34" stroke="#cdd7e8" stroke-width="2"/>
+<text x="1100" y="182" font-family="Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="1.1" fill="#52627d">C · APPROVED CLOUD AI</text>
+<g filter="url(#shadow)"><rect x="85" y="245" width="400" height="150" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M103 245 H467 Q485 245 485 263 V303 H85 V263 Q85 245 103 245" fill="#2864e8"/></g>
+<text x="103" y="281" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">One server</text>
+<text x="103" y="329" font-family="Arial,sans-serif" font-size="14" fill="#17243b">API + DB + local AI</text>
+<text x="103" y="354" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Compose, private service network</text>
+<g filter="url(#shadow)"><rect x="85" y="485" width="400" height="150" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M103 485 H467 Q485 485 485 503 V543 H85 V503 Q85 485 103 485" fill="#198eaa"/></g>
+<text x="103" y="521" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">One failure domain</text>
+<text x="103" y="569" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Lowest installation burden</text>
+<text x="103" y="594" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Contention must be benchmarked</text>
+<g filter="url(#shadow)"><rect x="85" y="710" width="400" height="100" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M103 710 H467 Q485 710 485 728 V768 H85 V728 Q85 710 103 710" fill="#188b82"/></g>
+<text x="103" y="746" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">Best starting point</text>
+<text x="103" y="794" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Pilot / small site</text>
+<g filter="url(#shadow)"><rect x="600" y="245" width="400" height="150" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M618 245 H982 Q1000 245 1000 263 V303 H600 V263 Q600 245 618 245" fill="#2864e8"/></g>
+<text x="618" y="281" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">Three service tiers</text>
+<text x="618" y="329" font-family="Arial,sans-serif" font-size="14" fill="#17243b">App ↔ DB ↔ AI over private LAN</text>
+<text x="618" y="354" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Independent sizing and maintenance</text>
+<g filter="url(#shadow)"><rect x="600" y="485" width="400" height="150" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M618 485 H982 Q1000 485 1000 503 V543 H600 V503 Q600 485 618 485" fill="#198eaa"/></g>
+<text x="618" y="521" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">More operations</text>
+<text x="618" y="569" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Segmentation and monitoring</text>
+<text x="618" y="594" font-family="Arial,sans-serif" font-size="14" fill="#17243b">HA is separate additional design</text>
+<g filter="url(#shadow)"><rect x="600" y="710" width="400" height="100" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M618 710 H982 Q1000 710 1000 728 V768 H600 V728 Q600 710 618 710" fill="#188b82"/></g>
+<text x="618" y="746" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">Best when needed</text>
+<text x="618" y="794" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Isolation / scale / DB operations</text>
+<g filter="url(#shadow)"><rect x="1115" y="245" width="400" height="150" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M1133 245 H1497 Q1515 245 1515 263 V303 H1115 V263 Q1115 245 1133 245" fill="#7458c5"/></g>
+<text x="1133" y="281" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">Local Core + cloud model</text>
+<text x="1133" y="329" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Only minimized prompt egress</text>
+<text x="1133" y="354" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Optional local fallback</text>
+<g filter="url(#shadow)"><rect x="1115" y="485" width="400" height="150" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M1133 485 H1497 Q1515 485 1515 503 V543 H1115 V503 Q1115 485 1133 485" fill="#a35d7c"/></g>
+<text x="1133" y="521" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">External dependency</text>
+<text x="1133" y="569" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Provider outage / spend / terms</text>
+<text x="1133" y="594" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Egress policy and adapter needed</text>
+<g filter="url(#shadow)"><rect x="1115" y="710" width="400" height="100" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M1133 710 H1497 Q1515 710 1515 728 V768 H1115 V728 Q1115 710 1133 710" fill="#188b82"/></g>
+<text x="1133" y="746" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">Best when approved</text>
+<text x="1133" y="794" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Managed inference / no GPU ops</text>
+<text x="1550" y="976" text-anchor="end" font-family="Arial,sans-serif" font-size="12" fill="#52627d">ANZMA AI Insight · Architecture proposal · 25 Nov 2026</text>
+</svg>

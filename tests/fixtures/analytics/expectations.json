@@ -1,0 +1,509 @@
+{
+  "expectations_meta": {
+    "fixture_set": "anzma-v02-golden-analytics",
+    "draft_version": "0.3-for-review",
+    "path": "tests/fixtures/analytics/expectations.json",
+    "paired_file": "tests/fixtures/analytics/events.json",
+    "oracle_statement": "Every value below was derived by hand from the records in events.json. No code, SQL or analytics function was used to calculate any expected value.",
+    "review_status": "0.3: updated for S-E1, S-E2, S-H1, S-H2 and status_mirror (see docs/ADR_GOLDEN_FIXTURES_RESOLUTION.md). Every changed value follows an approved rule, not the implementation output. Still NOT independently reviewed by a human.",
+    "result_field_names": "Row and status names follow the Proposed schema in ADR-0001 section 4 and open question g. They are not a decided contract.",
+    "quality_note": "The value domain of the envelope field 'quality' is not defined in the ADR, so it is not asserted (null).",
+    "complete_note": "Where complete=true is expected, it is conditional on a mechanism that records source coverage (ADR open question g). That mechanism does not exist today, so the value is the expected semantic outcome, not today's behaviour.",
+    "row_emission_assumption": "ROW_EMISSION_RULE_ASSUMED: a row is emitted only for a door/asset that has at least one eligible event (including look-back events). A query with no eligible events returns total_rows 0 (consistent with G-COMP-03).",
+    "limitation_codes_note": "Limitation codes are fixture labels. The ADR does not define limitation texts; the wording remains Proposed.",
+    "limitation_codes": {
+      "INITIAL_STATE_UNKNOWN": "No reliable earlier transition; the state at period start is UNKNOWN (D-06, D-08).",
+      "FLAPPING_NOT_EVALUATED": "No flapping window configured; FLAPPING classification disabled (D-07).",
+      "OPEN_OUTAGE_LOWER_BOUND": "Outage has no observed recovery; the duration is a lower bound (D-09).",
+      "ORPHAN_OFFLINE_END": "An OFFLINE_END without a known start was recorded as an incomplete transition (D-06).",
+      "LEGACY_NULL_SOURCE_EVENT_ID": "Legacy rows without source_event_id are counted individually and never merged (D-04).",
+      "EXCLUDED_TIMESTAMP_MISSING": "Event excluded: observed_at missing (D-11).",
+      "EXCLUDED_TIMESTAMP_UNTRUSTED": "Event excluded: timestamp_quality UNTRUSTED (D-11).",
+      "PAGINATION_INCOMPLETE": "Connector retrieval did not finish; results are partial (D-12).",
+      "COVERAGE_ENDS_BEFORE_PERIOD_END": "Trusted coverage ends before the requested period end; the period is not complete and the device state at the period end is UNKNOWN (D-09, D-12, H1).",
+      "SOURCE_SILENT_COVERAGE_GAP": "Source silent / data gap; coverage of the period is incomplete; silence is not an Offline outage (D-05, D-12).",
+      "SYSTEM_NOT_ELIGIBLE_FOR_OFFLINE": "System type is outside v0.2 Offline Frequency scope (D-05).",
+      "CAPABILITY_UNSUPPORTED": "The source does not declare the needed capability (D-12).",
+      "CORRELATION_UNAVAILABLE": "No reliable correlation identifier; events are not merged (D-01, D-04)."
+    },
+    "standard_cairo_p2_conversion": "Africa/Cairo is UTC+02:00 (assumed). Request 2026-11-02..2026-11-02 (inclusive end date): start_local = 2026-11-02T00:00:00+02:00 -> UTC = 00:00 - 02:00 = 2026-11-01T22:00:00Z. end_local_exclusive = 2026-11-03T00:00:00+02:00 -> UTC = 2026-11-02T22:00:00Z. Length 24 h = 86,400 s. Interval is [2026-11-01T22:00:00Z, 2026-11-02T22:00:00Z).",
+    "standard_cairo_nov1_conversion": "Africa/Cairo is UTC+02:00 (assumed). Request 2026-11-01..2026-11-01: start_local = 2026-11-01T00:00:00+02:00 -> 2026-10-31T22:00:00Z. end_local_exclusive = 2026-11-02T00:00:00+02:00 -> 2026-11-01T22:00:00Z. After-hours window inside it: [2026-11-01T20:00:00+02:00, 2026-11-02T00:00:00+02:00) = [2026-11-01T18:00:00Z, 2026-11-01T22:00:00Z)."
+  },
+  "expectations": [
+    {
+      "scenario_id": "S-A-AFTER-HOURS-BOUNDARY",
+      "tool": "doors.after_hours",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-01", "end": "2026-11-01", "after_local": "20:00", "building": "BLD-ALPHA"},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-10-31T22:00:00Z", "end_utc_exclusive": "2026-11-01T22:00:00Z", "after_hours_window_utc": "[2026-11-01T18:00:00Z, 2026-11-01T22:00:00Z)"},
+      "expected": {
+        "result_status_proposed": "COMPLETE",
+        "complete": true,
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "rows": [
+          {"building_code": "BLD-ALPHA", "door_external_id": "EXT-DOOR-A1", "opening_count": 3, "counted_evidence_refs": ["V-A-02", "V-A-03", "V-A-04"], "excluded_evidence_refs": [{"ref": "V-A-01", "reason": "19:59:59 local is before 20:00:00 inclusive start"}, {"ref": "V-A-05", "reason": "next local day 00:00:00 equals the exclusive end"}]}
+        ],
+        "ordering": "single row",
+        "limitations": []
+      },
+      "manual_calculation": "Conversion: UTC = local - 2h. V-A-01 19:59:59 -> 17:59:59Z; V-A-02 20:00:00 -> 18:00:00Z; V-A-03 20:00:01 -> 18:00:01Z; V-A-04 23:59:59 -> 21:59:59Z; V-A-05 2026-11-02 00:00:00 -> 2026-11-01T22:00:00Z. Window [18:00:00Z, 22:00:00Z). V-A-01: 17:59:59Z < 18:00:00Z -> excluded. V-A-02: = lower bound, inclusive -> counted. V-A-03: 18:00:01Z inside -> counted. V-A-04: 21:59:59Z < 22:00:00Z -> counted. V-A-05: 22:00:00Z = exclusive end (also equals the period end) -> excluded. Count = 3 (V-A-02, V-A-03, V-A-04). Each is a distinct vendor event with its own vendor_event_id, so no duplicates."
+    },
+    {
+      "scenario_id": "S-B-DST-CROSSING",
+      "tool": "doors.after_hours",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-10-24", "end": "2026-10-26", "after_local": "20:00", "building": "BLD-DST-TEST"},
+      "normalised_period": {"timezone": "Europe/Berlin (TEST-ONLY fixture timezone)", "start_local": "2026-10-24T00:00:00+02:00", "start_utc": "2026-10-23T22:00:00Z", "end_local_exclusive": "2026-10-27T00:00:00+01:00", "end_utc_exclusive": "2026-10-26T23:00:00Z", "duration_seconds": 262800, "local_day_lengths_hours": {"2026-10-24": 24, "2026-10-25": 25, "2026-10-26": 24}},
+      "expected": {
+        "result_status_proposed": "COMPLETE",
+        "complete": true,
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "rows": [
+          {"building_code": "BLD-DST-TEST", "door_external_id": "EXT-DOOR-B1", "opening_count": 4, "counted_evidence_refs": ["V-B-02", "V-B-04", "V-B-05", "V-B-07"], "excluded_evidence_refs": [{"ref": "V-B-01", "reason": "19:59:59 CEST, before 20:00"}, {"ref": "V-B-03", "reason": "19:30 CET (+01:00); a naive +02:00 conversion would wrongly give 20:30"}, {"ref": "V-B-06", "reason": "2026-10-26 00:00:00 CET, outside every after-hours window"}, {"ref": "V-B-08", "reason": "equals exclusive period end 2026-10-26T23:00:00Z"}]}
+        ],
+        "informational_breakdown_by_local_date": {"2026-10-24": 1, "2026-10-25": 2, "2026-10-26": 1},
+        "ordering": "single row",
+        "limitations": []
+      },
+      "manual_calculation": "DST: EU clocks go back on the last Sunday of October. October 2026: Nov 24 is a Tuesday (given), so Nov 1 is a Sunday and Oct 25 is a Sunday; Oct 25 is the last Sunday. Transition at 03:00 CEST (+02:00) = 01:00Z, after which the offset is +01:00 (CET). Start: Oct 24 00:00 at +02:00 -> Oct 23 22:00Z. End (exclusive): Oct 27 00:00 at +01:00 -> Oct 26 23:00Z. Duration: Oct 23 22:00Z to Oct 26 22:00Z = 72 h, plus 1 h to 23:00Z = 73 h = 73 x 3,600 = 262,800 s. Local days: Oct 24 00:00+02:00 (Oct 23 22:00Z) to Oct 25 00:00+02:00 (Oct 24 22:00Z) = 24 h; Oct 25 00:00+02:00 (Oct 24 22:00Z) to Oct 26 00:00+01:00 (Oct 25 23:00Z) = 25 h; Oct 26 = Oct 25 23:00Z to Oct 26 23:00Z = 24 h; total 73 h (check). After-hours windows in UTC: Oct 24 [18:00Z, 22:00Z of Oct 24) (20:00-24:00 at +02:00); Oct 25 [19:00Z, 23:00Z of Oct 25) (20:00-24:00 at +01:00); Oct 26 [19:00Z, 23:00Z of Oct 26). Events: V-B-01 17:59:59Z Oct 24 -> before window 1 -> no. V-B-02 18:00:00Z Oct 24 -> in window 1 -> yes. V-B-03 18:30:00Z Oct 25 -> window 2 starts 19:00Z, so no (local 19:30 CET). V-B-04 19:00:00Z Oct 25 -> in window 2 (start inclusive) -> yes. V-B-05 22:59:59Z Oct 25 -> before 23:00Z -> yes. V-B-06 23:00:00Z Oct 25 -> end of window 2 exclusive; local Oct 26 00:00 -> no. V-B-07 19:00:00Z Oct 26 -> in window 3 -> yes. V-B-08 23:00:00Z Oct 26 -> equals period end exclusive -> no. Count = 4. Reviewer note: confirm 2026-10-25 against tzdata for Europe/Berlin (FIXTURE_TIMEZONE_RULES_UNVERIFIED_AGAINST_TZDATA)."
+    },
+    {
+      "scenario_id": "S-C1-DUPLICATE-DELIVERY",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z"},
+      "expected": {
+        "result_status_proposed": "COMPLETE",
+        "complete": true,
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "distinct_source_events_counted": 2,
+        "duplicate_deliveries_ignored": 2,
+        "rows": [
+          {"building_code": "BLD-BRAVO", "source_code": "SRC-CCTV-C1", "asset_external_id": "EXT-CAM-C1", "initial_state": "UNKNOWN", "outages_started_in_period": 1, "outages_ongoing_at_period_start": 0, "downtime_seconds_in_period": 1800, "open_at_period_end": false, "duration_is_lower_bound": false, "flapping": "not_evaluated", "orphan_offline_end_count": 0,
+           "sessions": [{"start_utc": "2026-11-02T10:00:00Z", "end_utc": "2026-11-02T10:30:00Z", "overlap_seconds": 1800, "evidence_refs": ["EV-C1-001", "EV-C1-002"]}],
+           "evidence_refs": ["EV-C1-001", "EV-C1-002"]}
+        ],
+        "ordering": "single row",
+        "limitations": ["INITIAL_STATE_UNKNOWN", "FLAPPING_NOT_EVALUATED"]
+      },
+      "manual_calculation": "Event identity (source, source_event_id): EV-C1-001 appears in B-C1-001 and B-C1-002 (identical payload); EV-C1-002 appears in B-C1-001 and B-C1-003 (identical payload). Distinct identities = 2. Counted once each. Ordered by observed_at: offline 10:00:00Z, online 10:30:00Z. No earlier transition -> state UNKNOWN; OFFLINE_START from UNKNOWN opens session 1 at 10:00:00Z; OFFLINE_END closes it at 10:30:00Z. Duration = 10:30:00 - 10:00:00 = 30 min = 1,800 s; fully inside the period. Why this is discriminating: if the later redelivery of EV-C1-002 were counted as a separate event, it would arrive while the state is ONLINE and create a false orphan OFFLINE_END (expected orphan count is 0), and evidence would list a duplicate reference. Batch idempotency (source, batch_id) cannot help because B-C1-001/002/003 are distinct keys. This outcome depends on event-level deduplication being enforced (EVENT_DEDUP_ENFORCEMENT_UNVERIFIED)."
+    },
+    {
+      "scenario_id": "S-C2-LEGACY-NULL-IDENTITY",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z"},
+      "expected": {
+        "result_status_proposed": "COMPLETE",
+        "complete": true,
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "identity_units_counted": 3,
+        "identity_units_merged": 0,
+        "rows": [
+          {"building_code": "BLD-BRAVO", "source_code": "SRC-LEGACY-C2 (fixture placeholder)", "asset_external_id": "EXT-CAM-C2", "initial_state": "UNKNOWN", "outages_started_in_period": 1, "outages_ongoing_at_period_start": 0, "downtime_seconds_in_period": 1800, "open_at_period_end": false, "duration_is_lower_bound": false, "flapping": "not_evaluated", "orphan_offline_end_count": 0,
+           "sessions": [{"start_utc": "2026-11-02T10:00:00Z", "end_utc": "2026-11-02T10:30:00Z", "overlap_seconds": 1800, "evidence_refs": ["LEG-C2-001", "LEG-C2-002", "LEG-C2-003"]}],
+           "evidence_refs": ["LEG-C2-001", "LEG-C2-002", "LEG-C2-003"],
+           "data_quality_flags": [{"refs": ["LEG-C2-001", "LEG-C2-002", "LEG-C2-003"], "flag": "LEGACY_NULL_SOURCE_EVENT_ID"}]}
+        ],
+        "ordering": "single row",
+        "limitations": ["LEGACY_NULL_SOURCE_EVENT_ID", "INITIAL_STATE_UNKNOWN", "FLAPPING_NOT_EVALUATED"]
+      },
+      "manual_calculation": "All three rows have source_event_id NULL, so none has a reliable identity. LEG-C2-001 and LEG-C2-002 have identical timestamp (10:00:00Z) and payload but are NOT merged; each stays a separate evidence item (3 identity units, 0 merged). State machine: UNKNOWN -> LEG-C2-001 OFFLINE_START opens session at 10:00:00Z -> LEG-C2-002 OFFLINE_START is a repeat inside the same outage (D-06), so no new session -> LEG-C2-003 OFFLINE_END at 10:30:00Z closes it. Duration = 10:30:00 - 10:00:00 = 1,800 s. Note: the session count would be 1 even if the two start rows were merged; the observable difference is that both rows remain separate evidence references and carry the identity flag. Legacy source attribution is unknown (LEGACY_ROW_IDENTITY_HANDLING_UNVERIFIED)."
+    },
+    {
+      "scenario_id": "S-D-NO-PHYSICAL-OPENING",
+      "tool": "doors.after_hours",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-01", "end": "2026-11-01", "after_local": "20:00", "building": "BLD-ALPHA"},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-10-31T22:00:00Z", "end_utc_exclusive": "2026-11-01T22:00:00Z", "after_hours_window_utc": "[2026-11-01T18:00:00Z, 2026-11-01T22:00:00Z)"},
+      "expected": {
+        "result_status_proposed": "COMPLETE",
+        "complete": true,
+        "truncated": false,
+        "quality": null,
+        "counted_physical_openings_total": 0,
+        "total_rows": 0,
+        "rows": [],
+        "excluded_evidence_refs": [{"ref": "V-D-01", "reason": "ACCESS_GRANTED = authorisation only (D-01)"}, {"ref": "V-D-02", "reason": "UNLOCK_COMMAND = instruction only (D-01)"}],
+        "ordering": "no rows",
+        "limitations": []
+      },
+      "manual_calculation": "V-D-01 at 21:00:00 local = 19:00:00Z and V-D-02 at 21:00:05 local = 19:00:05Z are both inside the window [18:00:00Z, 22:00:00Z), so time does not exclude them. They are excluded by type: neither ACCESS_GRANTED nor UNLOCK_COMMAND is physical-opening evidence and neither has physical_open_evidence in the fixture. Count = 0. With no eligible door-opening event there is no row (ROW_EMISSION_RULE_ASSUMED); the zero is the intended assertion."
+    },
+    {
+      "scenario_id": "S-E1-DOOR-CORRELATED",
+      "tool": "doors.after_hours",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-01", "end": "2026-11-01", "after_local": "20:00", "building": "BLD-ALPHA"},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-10-31T22:00:00Z", "end_utc_exclusive": "2026-11-01T22:00:00Z", "after_hours_window_utc": "[2026-11-01T18:00:00Z, 2026-11-01T22:00:00Z)"},
+      "expected": {
+        "result_status_proposed": "PARTIAL",
+        "complete": false,
+        "complete_note": "0.3: DOOR_FORCED_OPEN (catalogue door_forced) is never counted as a normal opening and, without a correlation identifier in contract 1.0, cannot be linked to the DOOR_OPENED. A forced event inside the window means the opening count may be an underestimate, so the result is PARTIAL (ADR D-01, docs/DOORS_AFTER_HOURS.md decision 1).",
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "rows": [
+          {"building_code": "BLD-ALPHA", "door_external_id": "EXT-DOOR-E1", "opening_count": 1, "counted_evidence_refs": ["V-E1-01"], "uncounted_door_forced_events": 1, "uncounted_forced_evidence_refs": ["V-E1-02"], "link": "fixture-only correlation_id CORR-E1-0001; contract 1.0 has no correlation field, so it is ignored"}
+        ],
+        "ordering": "single row",
+        "limitations": ["CORRELATION_UNAVAILABLE"]
+      },
+      "manual_calculation": "22:00:00 local = 20:00:00Z and 22:00:01 local = 20:00:01Z; both inside [18:00:00Z, 22:00:00Z). V-E1-01 is a DOOR_OPENED (counted). V-E1-02 is a DOOR_FORCED_OPEN (catalogue door_forced): not counted as a normal opening and not linked, because correlation and physical-open confirmation cannot be expressed in contract 1.0 (CONTRACT_NO_CORRELATION_FIELD); the fixture correlation id is ignored. Count = 1, the forced event is disclosed (uncounted_door_forced_events = 1) and the result is PARTIAL with CORRELATION_UNAVAILABLE. The 1-second timestamp gap plays no part in the decision (D-01, D-04)."
+    },
+    {
+      "scenario_id": "S-E2-DOOR-UNCORRELATED",
+      "tool": "doors.after_hours",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-01", "end": "2026-11-01", "after_local": "20:00", "building": "BLD-ALPHA"},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-10-31T22:00:00Z", "end_utc_exclusive": "2026-11-01T22:00:00Z", "after_hours_window_utc": "[2026-11-01T18:00:00Z, 2026-11-01T22:00:00Z)"},
+      "expected": {
+        "result_status_proposed": "PARTIAL",
+        "complete": false,
+        "complete_note": "0.3: the DOOR_FORCED_OPEN is not counted as a normal opening (ADR D-01); it is disclosed and keeps the result PARTIAL.",
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "rows": [
+          {"building_code": "BLD-ALPHA", "door_external_id": "EXT-DOOR-E2", "opening_count": 1, "counted_evidence_refs": ["V-E2-01"], "uncounted_door_forced_events": 1, "uncounted_forced_evidence_refs": ["V-E2-02"]}
+        ],
+        "ordering": "single row",
+        "limitations": ["CORRELATION_UNAVAILABLE"]
+      },
+      "manual_calculation": "22:30:00 local = 20:30:00Z and 22:30:01 local = 20:30:01Z; both inside [18:00:00Z, 22:00:00Z). V-E2-01 is a DOOR_OPENED (counted); V-E2-02 is a DOOR_FORCED_OPEN (not counted as a normal opening, disclosed). No reliable link exists and close timestamps (1 s) must not be used to merge (D-01, D-04). Count = 1; CORRELATION_UNAVAILABLE records that the count may be an underestimate (or that the two describe one opening). No time window is introduced."
+    },
+    {
+      "scenario_id": "S-F-REPEATED-OFFLINE",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z"},
+      "expected": {
+        "result_status_proposed": "COMPLETE",
+        "complete": true,
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "rows": [
+          {"building_code": "BLD-BRAVO", "source_code": "SRC-CCTV-F", "asset_external_id": "EXT-CAM-F1", "initial_state": "UNKNOWN", "outages_started_in_period": 1, "outages_ongoing_at_period_start": 0, "downtime_seconds_in_period": 1200, "open_at_period_end": false, "duration_is_lower_bound": false, "flapping": "not_evaluated", "orphan_offline_end_count": 0,
+           "sessions": [{"start_utc": "2026-11-02T08:00:00Z", "end_utc": "2026-11-02T08:20:00Z", "overlap_seconds": 1200, "evidence_refs": ["EV-F-001", "EV-F-002", "EV-F-003", "EV-F-004"]}],
+           "evidence_refs": ["EV-F-001", "EV-F-002", "EV-F-003", "EV-F-004"]}
+        ],
+        "ordering": "single row",
+        "limitations": ["INITIAL_STATE_UNKNOWN", "FLAPPING_NOT_EVALUATED"]
+      },
+      "manual_calculation": "No earlier transition -> UNKNOWN. EV-F-001 camera_offline 08:00:00Z opens session 1. EV-F-002 (08:05:00Z) and EV-F-003 (08:10:00Z) are repeated OFFLINE_START inside the ongoing outage -> no new session, kept as evidence. EV-F-004 camera_online 08:20:00Z closes it. Duration = 08:20:00 - 08:00:00 = 20 min = 1,200 s. Sessions = 1."
+    },
+    {
+      "scenario_id": "S-G1-OUTAGE-STARTED-BEFORE-PERIOD",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z"},
+      "expected": {
+        "result_status_proposed": "COMPLETE",
+        "complete": true,
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "rows": [
+          {"building_code": "BLD-BRAVO", "source_code": "SRC-CCTV-G1", "asset_external_id": "EXT-CAM-G1", "initial_state": "OFFLINE", "outages_started_in_period": 0, "outages_ongoing_at_period_start": 1, "downtime_seconds_in_period": 10800, "open_at_period_end": false, "duration_is_lower_bound": false, "flapping": "not_evaluated", "orphan_offline_end_count": 0,
+           "sessions": [{"start_utc": "2026-11-01T20:00:00Z", "end_utc": "2026-11-02T01:00:00Z", "started_in_period": false, "ongoing_at_period_start": true, "overlap_start_utc": "2026-11-01T22:00:00Z", "overlap_end_utc": "2026-11-02T01:00:00Z", "overlap_seconds": 10800, "evidence_refs": ["EV-G1-001", "EV-G1-002"]}],
+           "evidence_refs": ["EV-G1-001", "EV-G1-002"]}
+        ],
+        "ordering": "single row",
+        "limitations": ["FLAPPING_NOT_EVALUATED"]
+      },
+      "manual_calculation": "Look-back: the last transition before the period start (2026-11-01T22:00:00Z) is EV-G1-001 camera_offline at 20:00:00Z with no later end before the start -> initial state OFFLINE (outage ongoing at period start). The outage started before the period, so outages_started_in_period = 0 and ongoing_at_start = 1. EV-G1-002 camera_online at 2026-11-02T01:00:00Z closes it. Overlap with [22:00:00Z, 22:00:00Z next day) = [max(20:00Z, 22:00Z), min(01:00Z next day, 22:00Z next day)) = [Nov 1 22:00:00Z, Nov 2 01:00:00Z). Seconds: 22:00 -> 24:00 = 2 h, 00:00 -> 01:00 = 1 h, total 3 h = 3 x 3,600 = 10,800 s. For reference, the full outage was 20:00 -> 01:00 = 5 h = 18,000 s, of which 7,200 s (20:00-22:00) lie before the period and are NOT counted. Depends on the look-back horizon (open question d)."
+    },
+    {
+      "scenario_id": "S-G2-NO-EARLIER-TRANSITION",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z"},
+      "expected": {
+        "result_status_proposed": "COMPLETE",
+        "complete": true,
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "rows": [
+          {"building_code": "BLD-BRAVO", "source_code": "SRC-CCTV-G2", "asset_external_id": "EXT-CAM-G2", "initial_state": "UNKNOWN", "outages_started_in_period": 1, "outages_ongoing_at_period_start": 0, "downtime_seconds_in_period": 1800, "open_at_period_end": false, "duration_is_lower_bound": false, "flapping": "not_evaluated", "orphan_offline_end_count": 0,
+           "sessions": [{"start_utc": "2026-11-02T05:00:00Z", "end_utc": "2026-11-02T05:30:00Z", "started_in_period": true, "ongoing_at_period_start": false, "overlap_seconds": 1800, "evidence_refs": ["EV-G2-001", "EV-G2-002"]}],
+           "evidence_refs": ["EV-G2-001", "EV-G2-002"]}
+        ],
+        "ordering": "single row",
+        "limitations": ["INITIAL_STATE_UNKNOWN", "FLAPPING_NOT_EVALUATED"]
+      },
+      "manual_calculation": "No reliable transition exists before 2026-11-01T22:00:00Z, so initial_state = UNKNOWN. Nothing is assumed: no outage ongoing at start is created (ongoing_at_start = 0) and the device is not declared ONLINE. The only downtime counted is the observed session 05:00:00Z -> 05:30:00Z = 30 min = 1,800 s. Time between period start and 05:00:00Z is not counted as either online or offline. The limitation warns that an outage in progress at period start cannot be ruled out."
+    },
+    {
+      "scenario_id": "S-H1-OPEN-OUTAGE-DATA-AS-OF-BEFORE-END",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z", "data_as_of": "2026-11-02T21:00:00Z"},
+      "expected": {
+        "result_status_proposed": "PARTIAL",
+        "complete": false,
+        "complete_note": "0.3 (H1): trusted coverage ends at 21:00:00Z, one hour before the period end (22:00:00Z), so the period is not complete and the state at the period end is UNKNOWN. The outage is only known open up to the last trustworthy observation (21:00:00Z). Query execution time never substitutes for coverage (ADR D-09, D-12).",
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "rows": [
+          {"building_code": "BLD-BRAVO", "source_code": "SRC-CCTV-H1", "asset_external_id": "EXT-CAM-H1", "initial_state": "UNKNOWN", "outages_started_in_period": 1, "outages_ongoing_at_period_start": 0, "downtime_seconds_in_period": 3600, "open_at_period_end": true, "state_at_period_end": "UNKNOWN", "duration_is_lower_bound": true, "flapping": "not_evaluated", "orphan_offline_end_count": 0,
+           "sessions": [{"start_utc": "2026-11-02T20:00:00Z", "end_utc": null, "cutoff_utc": "2026-11-02T21:00:00Z", "cutoff_reason": "data_as_of is earlier than period end", "overlap_seconds": 3600, "recovery_observed": false, "evidence_refs": ["EV-H1-001"]}],
+           "evidence_refs": ["EV-H1-001"]}
+        ],
+        "ordering": "single row",
+        "limitations": ["COVERAGE_ENDS_BEFORE_PERIOD_END", "OPEN_OUTAGE_LOWER_BOUND", "INITIAL_STATE_UNKNOWN", "FLAPPING_NOT_EVALUATED"]
+      },
+      "manual_calculation": "EV-H1-001 camera_offline at 2026-11-02T20:00:00Z; no camera_online observed. Cutoff = earlier of period end (2026-11-02T22:00:00Z) and data_as_of (2026-11-02T21:00:00Z) = 21:00:00Z. Duration = 21:00:00 - 20:00:00 = 1 h = 3,600 s. No recovery timestamp is invented; end_utc is null; the duration is a lower bound (D-09). The device is not claimed to be back Online, and it is not claimed to be Offline at the period end either: coverage stops at 21:00:00Z, so state_at_period_end = UNKNOWN (open_at_period_end only says no recovery was observed up to the cutoff)."
+    },
+    {
+      "scenario_id": "S-H2-OPEN-OUTAGE-DATA-AS-OF-AFTER-END",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z", "data_as_of": "2026-11-03T01:00:00Z"},
+      "expected": {
+        "result_status_proposed": "COMPLETE",
+        "complete": true,
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "rows": [
+          {"building_code": "BLD-BRAVO", "source_code": "SRC-CCTV-H2", "asset_external_id": "EXT-CAM-H2", "initial_state": "UNKNOWN", "outages_started_in_period": 1, "outages_ongoing_at_period_start": 0, "downtime_seconds_in_period": 7200, "open_at_period_end": true, "state_at_period_end": "OFFLINE", "duration_is_lower_bound": true, "flapping": "not_evaluated", "orphan_offline_end_count": 0,
+           "sessions": [{"start_utc": "2026-11-02T20:00:00Z", "end_utc": null, "cutoff_utc": "2026-11-02T22:00:00Z", "cutoff_reason": "period end is earlier than data_as_of", "overlap_seconds": 7200, "recovery_observed": false, "evidence_refs": ["EV-H2-001"]}],
+           "evidence_refs": ["EV-H2-001"]}
+        ],
+        "ordering": "single row",
+        "limitations": ["OPEN_OUTAGE_LOWER_BOUND", "INITIAL_STATE_UNKNOWN", "FLAPPING_NOT_EVALUATED"]
+      },
+      "manual_calculation": "EV-H2-001 camera_offline at 2026-11-02T20:00:00Z; no recovery observed. Cutoff = earlier of period end (2026-11-02T22:00:00Z) and data_as_of (2026-11-03T01:00:00Z) = 22:00:00Z. Duration = 22:00:00 - 20:00:00 = 2 h = 7,200 s. The outage stays open (recovery not observed), duration is a lower bound. Time after the period end is not counted."
+    },
+    {
+      "scenario_id": "S-I-ORPHAN-OFFLINE-END",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "NEEDS_DECISION",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z"},
+      "expected": {
+        "result_status_proposed": "COMPLETE",
+        "complete": true,
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "rows": [
+          {"building_code": "BLD-BRAVO", "source_code": "SRC-CCTV-I", "asset_external_id": "EXT-CAM-I1", "initial_state": "ONLINE", "outages_started_in_period": 0, "outages_ongoing_at_period_start": 0, "downtime_seconds_in_period": 0, "open_at_period_end": false, "duration_is_lower_bound": false, "flapping": "not_evaluated", "orphan_offline_end_count": 1,
+           "orphan_offline_end_refs": ["EV-I-003"],
+           "initial_state_evidence_refs": ["EV-I-001", "EV-I-002"],
+           "sessions": [],
+           "evidence_refs": ["EV-I-001", "EV-I-002", "EV-I-003"]}
+        ],
+        "ordering": "single row",
+        "limitations": ["ORPHAN_OFFLINE_END", "FLAPPING_NOT_EVALUATED"]
+      },
+      "manual_calculation": "Look-back: the last transition before 2026-11-01T22:00:00Z is EV-I-002 camera_online at 11:00:00Z (closing EV-I-001 offline at 10:00:00Z) -> initial state ONLINE, device recovered. That earlier session (10:00Z-11:00Z) ended before the period start and contributes 0 s and 0 started outages. In the period, EV-I-003 camera_online at 2026-11-02T12:00:00Z arrives while the state is ONLINE: it is an OFFLINE_END without a known start, so it is recorded as an incomplete transition, creates no session and increments orphan_offline_end_count to 1. Sessions = 0, downtime = 0 s. Interpretation note: D-06 literally covers 'without a known corresponding start'; treating an end that arrives in a known ONLINE state as an orphan follows the ADR's pseudocode (ONLINE|UNKNOWN -> orphan)."
+    },
+    {
+      "scenario_id": "S-J-SOURCE-SILENCE",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z", "data_as_of": "2026-11-02T06:00:00Z"},
+      "expected": {
+        "result_status_proposed": "PARTIAL",
+        "complete": false,
+        "complete_basis": "source coverage ends at 2026-11-02T06:00:00Z; the period runs to 22:00:00Z",
+        "truncated": false,
+        "quality": null,
+        "total_rows": 0,
+        "outage_sessions_total": 0,
+        "rows": [],
+        "uncovered_seconds_in_period": 57600,
+        "supporting_observation_refs": ["OBS-J-01", "OBS-J-02", "OBS-J-03"],
+        "ordering": "no rows",
+        "limitations": ["SOURCE_SILENT_COVERAGE_GAP"]
+      },
+      "manual_calculation": "No equipment Offline transition exists, so no outage session is created even though liveness is SILENT and freshness is STALE (silence never means OFFLINE). Coverage ends at the data gap start 06:00:00Z; the period ends 22:00:00Z; uncovered time = 22:00 - 06:00 = 16 h = 16 x 3,600 = 57,600 s (informational). The result is not complete, and a zero is not proof that nothing happened. Zero rows because there is no eligible event (ROW_EMISSION_RULE_ASSUMED). How analytics reads liveness/gap records is unverified."
+    },
+    {
+      "scenario_id": "S-K-FLAPPING-DISABLED",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["NETWORKING"], "flapping_window": null},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z"},
+      "expected": {
+        "result_status_proposed": "COMPLETE",
+        "complete": true,
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "rows": [
+          {"building_code": "BLD-BRAVO", "source_code": "SRC-NET-K", "asset_external_id": "EXT-SW-K1", "initial_state": "UNKNOWN", "outages_started_in_period": 3, "outages_ongoing_at_period_start": 0, "downtime_seconds_in_period": 270, "open_at_period_end": false, "duration_is_lower_bound": false, "flapping": "not_evaluated", "orphan_offline_end_count": 0,
+           "sessions": [
+             {"start_utc": "2026-11-02T09:00:00Z", "end_utc": "2026-11-02T09:02:00Z", "overlap_seconds": 120, "evidence_refs": ["EV-K-001", "EV-K-002"]},
+             {"start_utc": "2026-11-02T09:03:00Z", "end_utc": "2026-11-02T09:04:30Z", "overlap_seconds": 90, "evidence_refs": ["EV-K-003", "EV-K-004"]},
+             {"start_utc": "2026-11-02T09:06:00Z", "end_utc": "2026-11-02T09:07:00Z", "overlap_seconds": 60, "evidence_refs": ["EV-K-005", "EV-K-006"]}
+           ],
+           "evidence_refs": ["EV-K-001", "EV-K-002", "EV-K-003", "EV-K-004", "EV-K-005", "EV-K-006"]}
+        ],
+        "ordering": "single row",
+        "limitations": ["FLAPPING_NOT_EVALUATED", "INITIAL_STATE_UNKNOWN"]
+      },
+      "manual_calculation": "UNKNOWN initially. link_down/link_up are a supported availability pair (NETWORKING). Session 1: 09:00:00 -> 09:02:00 = 2 min = 120 s. Session 2: 09:03:00 -> 09:04:30 = 1 min 30 s = 90 s. Session 3: 09:06:00 -> 09:07:00 = 1 min = 60 s. Total downtime = 120 + 90 + 60 = 270 s. The gaps between sessions are 60 s (09:02:00-09:03:00) and 90 s (09:04:30-09:06:00); they are NOT used to merge sessions (D-07). Sessions = 3. No flapping window is configured and none is invented, so flapping = not_evaluated with an explicit limitation; the session count stays 3 whatever window is configured later."
+    },
+    {
+      "scenario_id": "S-L-FAULT-PAIRS-NOT-OFFLINE",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["HVAC", "FIRE_ALARM"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z"},
+      "expected": {
+        "result_status_proposed": "UNSUPPORTED",
+        "complete": false,
+        "complete_basis": "requested systems are outside the v0.2 Offline Frequency scope; this is not a complete zero",
+        "truncated": false,
+        "quality": null,
+        "total_rows": 0,
+        "outage_sessions_total": null,
+        "rows": [],
+        "unsupported_systems": ["HVAC", "FIRE_ALARM"],
+        "operational_events_preserved_unchanged": ["EV-L-001", "EV-L-002", "EV-L-003", "EV-L-004"],
+        "ordering": "no rows",
+        "limitations": ["SYSTEM_NOT_ELIGIBLE_FOR_OFFLINE"]
+      },
+      "manual_calculation": "hvac_fault/hvac_recovered and fire_alarm_triggered/alarm_cleared are fault/recovery pairs, not availability transitions (D-05, H). A fault or alarm is not evidence that the equipment is Offline, so no OFFLINE session is derived: not for AHU-L1 (07:00:00Z-07:45:00Z) and not for FP-L1 (14:00:00Z-14:10:00Z). The outage count is null (not 0): the systems are unsupported, which differs from a complete query that legitimately finds zero outages (see S-O3-COMPLETE-ZERO-RESULT). The four events remain stored as operational events. The expected complete value is a conservative reading and is not stated by the ADR."
+    },
+    {
+      "scenario_id": "S-M-RANKING-TIES",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "NEEDS_DECISION",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV", "NETWORKING"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z"},
+      "expected": {
+        "result_status_proposed": "COMPLETE",
+        "complete": true,
+        "truncated": false,
+        "quality": null,
+        "total_rows": 5,
+        "ordering": "outage session count DESC, building_code ASC, source_code ASC, asset_external_id ASC",
+        "ranking_metric_note": "RANKING_METRIC_PROPOSED_OPEN_QUESTION_C: sorted by outage-session count as written in decision C. Every session here starts and ends inside the period, so 'outages started' and 'sessions overlapping' give the same counts; only the downtime-based metric would reorder rows.",
+        "rows": [
+          {"rank": 1, "building_code": "BLD-BRAVO", "source_code": "SRC-M-2", "asset_external_id": "EXT-SW-M-1", "outages_started_in_period": 2, "downtime_seconds_in_period": 900, "evidence_refs": ["EV-M-01", "EV-M-02", "EV-M-03", "EV-M-04"]},
+          {"rank": 2, "building_code": "BLD-ALPHA", "source_code": "SRC-M-2", "asset_external_id": "EXT-CAM-M-9", "outages_started_in_period": 1, "downtime_seconds_in_period": 60, "evidence_refs": ["EV-M-05", "EV-M-06"]},
+          {"rank": 3, "building_code": "BLD-BRAVO", "source_code": "SRC-M-1", "asset_external_id": "EXT-CAM-M-1", "outages_started_in_period": 1, "downtime_seconds_in_period": 120, "evidence_refs": ["EV-M-07", "EV-M-08"]},
+          {"rank": 4, "building_code": "BLD-BRAVO", "source_code": "SRC-M-1", "asset_external_id": "EXT-CAM-M-2", "outages_started_in_period": 1, "downtime_seconds_in_period": 180, "evidence_refs": ["EV-M-09", "EV-M-10"]},
+          {"rank": 5, "building_code": "BLD-BRAVO", "source_code": "SRC-M-2", "asset_external_id": "EXT-CAM-M-0", "outages_started_in_period": 1, "downtime_seconds_in_period": 240, "evidence_refs": ["EV-M-11", "EV-M-12"]}
+        ],
+        "informational_only_not_expected_order_if_metric_were_downtime": ["EXT-SW-M-1 (900)", "EXT-CAM-M-0 (240)", "EXT-CAM-M-2 (180)", "EXT-CAM-M-1 (120)", "EXT-CAM-M-9 (60)"],
+        "limitations": ["INITIAL_STATE_UNKNOWN", "FLAPPING_NOT_EVALUATED"]
+      },
+      "manual_calculation": "Sessions per device (all start from UNKNOWN, all closed inside the period): EXT-SW-M-1: EV-M-01 02:00:00Z -> EV-M-02 02:10:00Z = 600 s; EV-M-03 03:00:00Z -> EV-M-04 03:05:00Z = 300 s; 2 sessions, 900 s. EXT-CAM-M-9: 04:00:00Z -> 04:01:00Z = 60 s, 1 session. EXT-CAM-M-1: 05:00:00Z -> 05:02:00Z = 120 s, 1 session. EXT-CAM-M-2: 06:00:00Z -> 06:03:00Z = 180 s, 1 session. EXT-CAM-M-0: 07:00:00Z -> 07:04:00Z = 240 s, 1 session. Sorting: (1) count DESC: SW-M-1 has 2, the other four have 1 -> SW-M-1 first, even though its building/source keys would not sort it first. (2) Among the four ties, building_code ASC: BLD-ALPHA < BLD-BRAVO -> CAM-M-9 next. (3) Remaining three are BLD-BRAVO; source_code ASC: SRC-M-1 < SRC-M-2 -> the two SRC-M-1 devices precede CAM-M-0. (4) Within BLD-BRAVO/SRC-M-1, asset_external_id ASC: EXT-CAM-M-1 < EXT-CAM-M-2. Final order: SW-M-1, CAM-M-9, CAM-M-1, CAM-M-2, CAM-M-0. The three keys (building, source, asset) are each exercised once."
+    },
+    {
+      "scenario_id": "S-N-MISSING-UNTRUSTED-TIMESTAMPS",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "BLOCKED_BY_SCHEMA",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z"},
+      "expected": {
+        "result_status_proposed": "PARTIAL",
+        "complete": false,
+        "complete_basis": "two records could not be used for time-based analysis; their effect on completeness is not decided by the ADR (conservative reading)",
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "rows": [
+          {"building_code": "BLD-BRAVO", "source_code": "SRC-CCTV-N", "asset_external_id": "EXT-CAM-N1", "initial_state": "UNKNOWN", "outages_started_in_period": 1, "outages_ongoing_at_period_start": 0, "downtime_seconds_in_period": 600, "open_at_period_end": false, "duration_is_lower_bound": false, "flapping": "not_evaluated", "orphan_offline_end_count": 0,
+           "sessions": [{"start_utc": "2026-11-02T11:00:00Z", "end_utc": "2026-11-02T11:10:00Z", "overlap_seconds": 600, "evidence_refs": ["EV-N-001", "EV-N-002"]}],
+           "evidence_refs": ["EV-N-001", "EV-N-002"]}
+        ],
+        "excluded_records": [
+          {"ref": "Q-N-001", "reason_code": "EXCLUDED_TIMESTAMP_MISSING", "received_at_preserved": "2026-11-02T09:00:00Z"},
+          {"ref": "Q-N-002", "reason_code": "EXCLUDED_TIMESTAMP_UNTRUSTED", "received_at_preserved": "2026-11-02T09:30:05Z"}
+        ],
+        "ordering": "single row",
+        "limitations": ["EXCLUDED_TIMESTAMP_MISSING", "EXCLUDED_TIMESTAMP_UNTRUSTED", "INITIAL_STATE_UNKNOWN", "FLAPPING_NOT_EVALUATED"]
+      },
+      "manual_calculation": "Q-N-001 has no observed_at (MISSING) and Q-N-002 has timestamp_quality UNTRUSTED, so both are excluded from time-dependent analytics (D-11, F). Remaining GOOD events: EV-N-001 camera_offline 11:00:00Z, EV-N-002 camera_online 11:10:00Z. Session = 11:10:00 - 11:00:00 = 10 min = 600 s. Forbidden shortcut for contrast: replacing the missing observed_at of Q-N-001 by its received_at (09:00:00Z) and trusting Q-N-002 at 09:30:00Z would invent a session of 30 min = 1,800 s and a second start/end pair; the expected result must NOT contain that. Both excluded records keep their received_at and a reason in the quarantine path. Whether excluded records make the result incomplete is not stated by the ADR; PARTIAL/complete=false is the conservative assumption and is flagged for review."
+    },
+    {
+      "scenario_id": "S-O1-PAGINATION-FAILURE",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "BLOCKED_BY_CONNECTOR",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z", "data_as_of": "2026-11-02T04:20:00Z"},
+      "expected": {
+        "result_status_proposed": "PARTIAL",
+        "complete": false,
+        "truncated": false,
+        "quality": null,
+        "total_rows": 1,
+        "rows": [
+          {"building_code": "BLD-BRAVO", "source_code": "SRC-CCTV-O1", "asset_external_id": "EXT-CAM-O1", "initial_state": "UNKNOWN", "outages_started_in_period": 2, "outages_ongoing_at_period_start": 0, "downtime_seconds_in_period": 3000, "open_at_period_end": false, "duration_is_lower_bound": false, "flapping": "not_evaluated", "orphan_offline_end_count": 0,
+           "sessions": [
+             {"start_utc": "2026-11-02T02:00:00Z", "end_utc": "2026-11-02T02:30:00Z", "overlap_seconds": 1800, "evidence_refs": ["EV-O1-001", "EV-O1-002"]},
+             {"start_utc": "2026-11-02T04:00:00Z", "end_utc": "2026-11-02T04:20:00Z", "overlap_seconds": 1200, "evidence_refs": ["EV-O1-003", "EV-O1-004"]}
+           ],
+           "evidence_refs": ["EV-O1-001", "EV-O1-002", "EV-O1-003", "EV-O1-004"]}
+        ],
+        "ordering": "single row",
+        "limitations": ["PAGINATION_INCOMPLETE", "INITIAL_STATE_UNKNOWN", "FLAPPING_NOT_EVALUATED"],
+        "limitation_detail": "Pages 1-2 of 3 retrieved; page 3 failed with an error; a next_cursor was present after page 2. Counts and durations may be understated."
+      },
+      "manual_calculation": "Retrieved pages 1 and 2 only (completion_status INCOMPLETE), so complete=false and the result is marked partial. Partial rows are allowed if clearly labelled (D-12). Session 1: 02:00:00Z -> 02:30:00Z = 30 min = 1,800 s. Session 2: 04:00:00Z -> 04:20:00Z = 20 min = 1,200 s. Total = 1,800 + 1,200 = 3,000 s; sessions = 2. Missing page 3 could hold later transitions, so no claim is made about them."
+    },
+    {
+      "scenario_id": "S-O2-CAPABILITY-UNSUPPORTED",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "PROTOTYPE_REPLAY_VERIFIED",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z"},
+      "expected": {
+        "result_status_proposed": "UNSUPPORTED",
+        "complete": false,
+        "complete_basis": "required capability history.events is not declared by the source",
+        "truncated": false,
+        "quality": null,
+        "total_rows": 0,
+        "outage_sessions_total": null,
+        "rows": [],
+        "ordering": "no rows",
+        "limitations": ["CAPABILITY_UNSUPPORTED"]
+      },
+      "manual_calculation": "The manifest of SRC-CCTV-O2 declares only current.state; history.events is omitted, which means unsupported. No history can be read, so the outage count is null, not 0: unsupported is distinct from supported-with-missing-data (S-O1) and from a complete zero (S-O3)."
+    },
+    {
+      "scenario_id": "S-O3-COMPLETE-ZERO-RESULT",
+      "tool": "devices.offline_frequency",
+      "status_mirror": "BLOCKED_BY_CONNECTOR",
+      "requested_parameters": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"]},
+      "normalised_period": {"timezone": "Africa/Cairo", "utc_offset": "+02:00", "start_utc": "2026-11-01T22:00:00Z", "end_utc_exclusive": "2026-11-02T22:00:00Z", "data_as_of": "2026-11-02T22:00:00Z"},
+      "expected": {
+        "result_status_proposed": "COMPLETE",
+        "complete": true,
+        "truncated": false,
+        "quality": null,
+        "total_rows": 0,
+        "outage_sessions_total": 0,
+        "rows": [],
+        "ordering": "no rows",
+        "limitations": []
+      },
+      "manual_calculation": "The connector retrieved page 1 with no events, no next_cursor and a guaranteed end-of-dataset signal (fixture assertion), and coverage spans [2026-11-01T22:00:00Z, 2026-11-02T22:00:00Z) = the full period. All required pages were retrieved without errors, so complete=true and the zero is legitimate: 0 sessions, 0 rows. Caveat: coverage here equals the period only; whether look-back coverage is also needed to claim completeness is open question d."
+    }
+  ]
+}

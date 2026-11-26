@@ -15,6 +15,8 @@ All notable changes to Anzma AI Insight Core are recorded here. This file is mai
 - Loopback-only default host bindings for PostgreSQL and Ollama.
 - API snapshot comparison with a documented `1e-12` numeric tolerance and exact comparison for nonnumeric fields.
 - Authenticated, read-only E5 endpoints for series freshness, source liveness, and gap history, plus one dashboard evidence panel; existing KPI, alert, equipment-health, and chat contracts remain unchanged.
+- Migration 014 (`014_event_catalogue_pairing.sql`): catalogue types `door_opened` and `access_granted` (ACCESS_CONTROL), `event_types.event_class`, `outage_class` and `resolves_event_type_id`, backfilled for the 12 seed types. The legacy pair lists are unchanged; parity tests compare them with the database (ADR-0001 follow-ups 1 and 2).
+- `devices.offline_frequency` analytics tool (`app/domain/tools/devices_offline_frequency.py`): outage sessions per device (repeated alarms merged, open-ended outages as lower bounds, per-session and total downtime, evidence refs), silence is never an outage. Shared `periods.build_period`; see `docs/DEVICES_OFFLINE_FREQUENCY.md`.
 
 ### Fixed
 

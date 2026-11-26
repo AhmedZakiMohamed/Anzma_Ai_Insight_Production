@@ -29,7 +29,7 @@ from app.domain.evidence import validation as val
 RESULTS = []
 
 
-def test(name):
+def check_case(name):
     def deco(fn):
         try:
             fn()
@@ -100,7 +100,7 @@ def make_network_events(values, packet_loss=None, start=None, step_min=15):
 
 
 # ------------------------------------------------------------------ 1. integrity rules
-@test("integrity: every event type the generator/scenarios emit is valid for its system")
+@check_case("integrity: every event type the generator/scenarios emit is valid for its system")
 def _():
     emitted = {"HVAC": ["TEMPERATURE_READING", "HIGH_TEMPERATURE", "FILTER_FAULT"],
                "NETWORK": ["BANDWIDTH_USAGE", "LINK_DOWN", "LINK_UP", "UPTIME_REPORT"],
@@ -112,7 +112,7 @@ def _():
             assert ir.check_event(system, t) == [], (system, t)
 
 
-@test("integrity: incompatible event/equipment pairs are rejected (e.g. SMOKE_DETECTED on a chiller)")
+@check_case("integrity: incompatible event/equipment pairs are rejected (e.g. SMOKE_DETECTED on a chiller)")
 def _():
     assert ir.check_event("HVAC", "SMOKE_DETECTED")
     assert ir.check_event("NETWORK", "HIGH_TEMPERATURE")
@@ -124,7 +124,7 @@ def _():
     assert ir.check_event("PUMP", "TEMPERATURE_READING")                    # unknown system
 
 
-@test("bandwidth: percentage thresholds raise warning above 80%, critical at 90% mean, and no alert below")
+@check_case("bandwidth: percentage thresholds raise warning above 80%, critical at 90% mean, and no alert below")
 def _():
     below = alert_engine.rule_net_bandwidth(make_network_events([72.0, 73.0, 74.0]))
     warning = alert_engine.rule_net_bandwidth(make_network_events([82.0, 85.0, 88.0]))
@@ -140,7 +140,7 @@ def _():
     assert not ({"mean_mbps", "peak_mbps"} & set(w["evidence"]["facts"]))
 
 
-@test("bandwidth: packet-loss playbook uses percent facts for congestion vs link quality")
+@check_case("bandwidth: packet-loss playbook uses percent facts for congestion vs link quality")
 def _():
     high = alert_engine.rule_net_bandwidth(make_network_events([82.0, 85.0, 88.0], [4.0, 4.2, 4.4]))
     low = alert_engine.rule_net_bandwidth(make_network_events([62.0, 65.0, 68.0], [4.0, 4.2, 4.4]))
@@ -156,7 +156,7 @@ def _():
     assert "LOSS_PHYSICAL" in {r["action_id"] for r in low_plan["recommendations"]}
 
 
-@test("bandwidth anomaly: deviation facts and summary use percent units")
+@check_case("bandwidth anomaly: deviation facts and summary use percent units")
 def _():
     start = datetime(2026, 11, 5, 6, 0, tzinfo=UTC)
     values = [50.0] * 30 + [70.0, 72.0, 74.0]
@@ -167,7 +167,7 @@ def _():
     assert "Mbps" not in alerts[0]["summary"]
 
 
-@test("integrity: alert rules cannot be raised on incompatible equipment")
+@check_case("integrity: alert rules cannot be raised on incompatible equipment")
 def _():
     assert ir.check_rule_target("HVAC_HIGH_TEMP", "HVAC") == []
     assert ir.check_rule_target("HVAC_HIGH_TEMP", "NETWORK")
@@ -178,14 +178,14 @@ def _():
         assert not any("no known system family" in m for m in ir.check_rule_target(rid, "HVAC")), rid
 
 
-@test("integrity: evidence of another system is only allowed for the CCTV/ACCESS blind-spot rule")
+@check_case("integrity: evidence of another system is only allowed for the CCTV/ACCESS blind-spot rule")
 def _():
     assert ir.check_evidence_event("CCTV", "SEC_BLIND_SPOT_ACCESS", "ACCESS", "ACCESS_GRANTED") == []
     assert ir.check_evidence_event("HVAC", "HVAC_HIGH_TEMP", "ACCESS", "ACCESS_GRANTED")
     assert ir.check_evidence_event("HVAC", "HVAC_HIGH_TEMP", "HVAC", "HIGH_TEMPERATURE") == []
 
 
-@test("integrity: historical events vs current conditions (opener without closer = current)")
+@check_case("integrity: historical events vs current conditions (opener without closer = current)")
 def _():
     t = lambda m: START + timedelta(minutes=m)
     closed = [{"ts": t(0), "event_type": "LINK_DOWN"}, {"ts": t(3), "event_type": "LINK_UP"}]
@@ -197,7 +197,7 @@ def _():
     assert ir.current_conditions(many_past) == []                           # many past events != active alarm
 
 
-@test("integrity: compat SQL covers every catalogue row")
+@check_case("integrity: compat SQL covers every catalogue row")
 def _():
     sql = ir.compat_sql()
     assert sql.count("('") == len(ir.compat_rows())
@@ -205,19 +205,19 @@ def _():
 
 
 # ------------------------------------------------------------------ 2. alert detection on the simulated fault
-@test("alerts: cooling failure becomes a CRITICAL HVAC_HIGH_TEMP alert with fan_off and sustained facts")
+@check_case("alerts: cooling failure becomes a CRITICAL HVAC_HIGH_TEMP alert with fan_off and sustained facts")
 def _():
     f = HIGH["evidence"]["facts"]
     assert HIGH["severity"] == "CRITICAL" and f["fan_off"] is True and f["sustained"] is True, f
     assert f["max_value"] > 32 and f["zone"] == "Server Room"
 
 
-@test("alerts: normal operation produces no alert (no false positives)")
+@check_case("alerts: normal operation produces no alert (no false positives)")
 def _():
     assert run_rules(make_events(fault=False)) == []
 
 
-@test("alerts: every alert's evidence is traceable to real events and compatible with the asset")
+@check_case("alerts: every alert's evidence is traceable to real events and compatible with the asset")
 def _():
     ids = {e["id"] for e in CTX["ev"][1]}
     for a in ALERTS:
@@ -228,7 +228,7 @@ def _():
 
 
 # ------------------------------------------------------------------ 3. recommendations
-@test("recommendations: derived only from playbook rules whose conditions hold, linked to evidence")
+@check_case("recommendations: derived only from playbook rules whose conditions hold, linked to evidence")
 def _():
     r = recs.recommend(HIGH)
     ids = {x["action_id"] for x in r["recommendations"]}
@@ -240,7 +240,7 @@ def _():
                for x in r["recommendations"])
 
 
-@test("recommendations: unknown rule or empty evidence yields no recommendation and a limitation")
+@check_case("recommendations: unknown rule or empty evidence yields no recommendation and a limitation")
 def _():
     assert recs.recommend({"rule_id": "NOPE", "evidence": {}})["recommendations"] == []
     empty = {"rule_id": "HVAC_HIGH_TEMP", "evidence": {"facts": {}, "events": []}}
@@ -249,7 +249,7 @@ def _():
 
 
 # ------------------------------------------------------------------ 4. validation layer
-@test("validation: deterministic explanation is grounding_supported only because the checks really ran")
+@check_case("validation: deterministic explanation is grounding_supported only because the checks really ran")
 def _():
     out = val.explain_alert(HIGH, ASSET, use_llm=False)
     assert out["validation"]["status"] == "grounding_supported" and out["validation"]["checks_run"]
@@ -259,7 +259,7 @@ def _():
     assert out["tool_used"] == "explain_alert"
 
 
-@test("validation: an invented reading is rejected")
+@check_case("validation: an invented reading is rejected")
 def _():
     bad = {"summary": "The temperature hit 41.7 °C [E1].", "probable_causes": [], "recommended_actions": [],
            "evidence_refs": ["E1"]}
@@ -267,7 +267,7 @@ def _():
     assert v["status"] == "failed" and any("41.7" in x for x in v["errors"]), v
 
 
-@test("validation: evidence-supported number does not authorize a definitive causal claim")
+@check_case("validation: evidence-supported number does not authorize a definitive causal claim")
 def _():
     bad = {"summary": "The compressor definitely caused the failure. Temperature reached 33.1 °C [E1].",
            "probable_causes": [], "recommended_actions": [], "evidence_refs": ["E1"]}
@@ -275,7 +275,7 @@ def _():
     assert v["status"] == "failed" and any("definitive cause" in x for x in v["errors"]), v
 
 
-@test("validation: invented cause, unapproved action and unknown citation are rejected")
+@check_case("validation: invented cause, unapproved action and unknown citation are rejected")
 def _():
     bad = {"summary": "Peak reached [E99].", "probable_causes": [{"id": "COMPRESSOR_BURNT"}],
            "recommended_actions": [{"id": "REPLACE_CHILLER"}], "evidence_refs": ["E99"]}
@@ -285,14 +285,14 @@ def _():
     assert any("E99" in x and "does not exist" in x for x in v)
 
 
-@test("validation: a cause whose condition does not hold is rejected (FILTER_BLOCKAGE without a filter fault)")
+@check_case("validation: a cause whose condition does not hold is rejected (FILTER_BLOCKAGE without a filter fault)")
 def _():
     exp = {"summary": "Fault at 14:00 [E1].", "probable_causes": [{"id": "FILTER_BLOCKAGE"}],
            "recommended_actions": [], "evidence_refs": ["E1"]}
     assert any("FILTER_BLOCKAGE" in x for x in val.validate_explanation(HIGH, ASSET, exp)["errors"])
 
 
-@test("validation: no stored evidence -> insufficient, never grounding_supported, with a limitation")
+@check_case("validation: no stored evidence -> insufficient, never grounding_supported, with a limitation")
 def _():
     empty = {"id": 7, "rule_id": "HVAC_HIGH_TEMP", "severity": "WARNING", "summary": "x",
              "evidence": {"facts": {}, "events": [], "thresholds": {}, "event_count": 0}}
@@ -303,7 +303,7 @@ def _():
     assert out["recommendations"] == [] and out["evidence"] == [], "nothing may be recommended without evidence"
 
 
-@test("validation: grounding_supported is refused when errors are present, and 'partial' is used when no cause is supported")
+@check_case("validation: grounding_supported is refused when errors are present, and 'partial' is used when no cause is supported")
 def _():
     try:
         val.standard_response(answer="a", evidence=[], references={}, model_used=None, tool_used="t",
@@ -322,7 +322,7 @@ def _():
     assert out["data_sufficiency"] == "partial", out["data_sufficiency"]
 
 
-@test("validation: standard_response refuses 'grounding_supported' without recorded checks")
+@check_case("validation: standard_response refuses 'grounding_supported' without recorded checks")
 def _():
     try:
         val.standard_response(answer="a", evidence=[], references={}, model_used=None, tool_used="t",
@@ -333,7 +333,7 @@ def _():
     raise AssertionError("grounding_supported label was accepted without checks")
 
 
-@test("validation: truncated evidence is disclosed as a limitation")
+@check_case("validation: truncated evidence is disclosed as a limitation")
 def _():
     big = dict(HIGH, evidence=dict(HIGH["evidence"], event_count=57))
     out = val.explain_alert(big, ASSET, use_llm=False)
@@ -341,7 +341,7 @@ def _():
 
 
 # ------------------------------------------------------------------ 5. safe fallback when the model is down
-@test("fallback: Ollama unreachable -> deterministic grounding_supported answer with the limitation stated")
+@check_case("fallback: Ollama unreachable -> deterministic grounding_supported answer with the limitation stated")
 def _():
     provider = OllamaProvider(host="http://127.0.0.1:1", model="qwen2.5:3b", timeout=2)
     out = val.explain_alert(HIGH, ASSET, use_llm=True, provider=provider)
@@ -352,14 +352,14 @@ def _():
 
 
 # ------------------------------------------------------------------ 6. missing data
-@test("missing data: a gap in readings does not invent an alert or a reading")
+@check_case("missing data: a gap in readings does not invent an alert or a reading")
 def _():
     alerts = run_rules(make_events(fault=False, gap=True))
     assert alerts == [], [a["rule_id"] for a in alerts]
 
 
 # ------------------------------------------------------------------ Day 2 fixes: status wording, playbook approval
-@test("D4: the success status is 'grounding_supported' with scope 'grounding'; 'validated' no longer exists")
+@check_case("D4: the success status is 'grounding_supported' with scope 'grounding'; 'validated' no longer exists")
 def _():
     out = val.explain_alert(HIGH, ASSET, use_llm=False)
     assert out["validation"]["status"] == "grounding_supported" and out["validation"]["scope"] == "grounding"
@@ -372,14 +372,14 @@ def _():
         pass
 
 
-@test("playbook: actions without approval records remain provisional and have no invented approver")
+@check_case("playbook: actions without approval records remain provisional and have no invented approver")
 def _():
     from app.domain.alerts import alert_config as cfg
     acts = [a for b in cfg.PLAYBOOKS.values() for a in b["actions"]]
     assert acts and all(a["status"] == "provisional" and not a["approver"] for a in acts)
 
 
-@test("playbook: a DRAFT action is never recommended, never eligible and is rejected by the validator")
+@check_case("playbook: a DRAFT action is never recommended, never eligible and is rejected by the validator")
 def _():
     from app.domain.alerts import alert_config as cfg
     action = next(a for a in cfg.PLAYBOOKS["HVAC_TEMP"]["actions"] if a["id"] == "HVAC_COOLING")
@@ -398,7 +398,7 @@ def _():
     assert "HVAC_COOLING" in {x["action_id"] for x in recs.recommend(HIGH)["recommendations"]}
 
 
-@test("freshness: as_of adds a limitation to an explanation")
+@check_case("freshness: as_of adds a limitation to an explanation")
 def _():
     out = val.explain_alert(HIGH, ASSET, use_llm=False, as_of=START)
     assert any("current only up to 2026-11-05 12:00" in x for x in out["limitations"]), out["limitations"]

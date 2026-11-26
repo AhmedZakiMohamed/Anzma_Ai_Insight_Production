@@ -1,0 +1,35 @@
+{
+  "policy_version": "maintenance-priority-proposal-1",
+  "normalization_examples": {
+    "faults": [
+      {"independent_faults": 0, "score": 0.0},
+      {"independent_faults": 1, "score": 25.0},
+      {"independent_faults": 2, "score": 50.0},
+      {"independent_faults": 4, "score": 100.0},
+      {"independent_faults": 9, "score": 100.0}
+    ],
+    "condition": [
+      {"value": 26.0, "warning": 29.0, "critical": 32.0, "score": 0.0},
+      {"value": 29.0, "warning": 29.0, "critical": 32.0, "score": 0.0},
+      {"value": 29.01, "warning": 29.0, "critical": 32.0, "score": 50.17},
+      {"value": 30.5, "warning": 29.0, "critical": 32.0, "score": 75.0},
+      {"value": 32.0, "warning": 29.0, "critical": 32.0, "score": 100.0},
+      {"value": 40.0, "warning": 29.0, "critical": 32.0, "score": 100.0}
+    ],
+    "downtime": [
+      {"seconds": 0, "score": 0.0},
+      {"seconds": 7200, "score": 50.0},
+      {"seconds": 14400, "score": 100.0},
+      {"seconds": 28800, "score": 100.0}
+    ]
+  },
+  "priority_examples": [
+    {"profile": "availability-v1", "fault_count": 2, "downtime_seconds": 7200,
+     "condition_score": 80.0, "total_score": 57.5, "priority": "MEDIUM"},
+    {"profile": "fault-condition-v1", "fault_count": 1, "downtime_seconds": null,
+     "condition_score": 50.0, "total_score": 35.0, "priority": "LOW"},
+    {"profile": "fault-condition-v1", "fault_count": 1, "downtime_seconds": null,
+     "condition_score": 100.0, "total_score": 55.0, "priority": "MEDIUM"}
+  ],
+  "thresholds": {"HIGH": 70.0, "MEDIUM": 40.0, "LOW": "below 40.0"}
+}

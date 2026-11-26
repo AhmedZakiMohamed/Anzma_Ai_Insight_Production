@@ -1,0 +1,22 @@
+flowchart LR
+ subgraph ONPREM[Customer environment · sensitive data boundary]
+  SYS[BMS · HVAC · access · VMS · fire · energy]
+  CON[Connectors · normalize · map]
+  API[ANZMA FastAPI · auth · tool registry]
+  PG[(PostgreSQL · operational data)]
+  DET[Deterministic analytics · evidence · freshness]
+  GATE[Local minimization + egress policy]
+  LOCAL[Optional local model fallback]
+  UI[Dashboard · assistant · alerts]
+  SYS --> CON -->|HTTPS ingestion| API
+  API --> PG
+  API --> DET
+  API --> GATE
+  API --> LOCAL
+  UI --> API
+ end
+ subgraph CLOUD[Approved provider boundary]
+  LLM[Cloud LLM API]
+ end
+ GATE -->|Outbound TLS · minimized allowlisted prompt| LLM
+ LLM -->|bounded response| GATE

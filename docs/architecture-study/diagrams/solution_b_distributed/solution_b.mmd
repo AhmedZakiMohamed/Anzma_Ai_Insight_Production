@@ -1,0 +1,13 @@
+flowchart LR
+ subgraph EDGE[Customer private network / firewall]
+  U[Browser + site connectors]
+  APP[App server
+FastAPI · auth · tools · analytics]
+  DB[(Database server
+PostgreSQL 16 · backup · monitoring)]
+  AI[Inference server
+Ollama / vLLM · GPU/model storage]
+  U -->|HTTPS| APP
+  APP -->|SQL/TLS · restricted 5432| DB
+  APP -->|private model API| AI
+ end

@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000">
+<defs><marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="6" orient="auto"><path d="M1,1 L10,6 L1,11 z" fill="#2864e8"/></marker><filter id="shadow" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#12264c" flood-opacity=".10"/></filter></defs>
+<rect width="1600" height="1000" fill="#f5f7fc"/>
+<text x="52" y="58" font-family="Arial,sans-serif" font-size="31" font-weight="700" fill="#10234e">A · All-in-one on-premise</text>
+<text x="52" y="91" font-family="Arial,sans-serif" font-size="16" fill="#52627d">One Linux server · private Compose network · local inference · simplest operating footprint</text>
+<rect x="35" y="130" width="370" height="740" rx="24" fill="#edf4ff" fill-opacity=".34" stroke="#cdd7e8" stroke-width="2"/>
+<text x="55" y="162" font-family="Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="1.1" fill="#52627d">CUSTOMER NETWORK</text>
+<rect x="430" y="130" width="1125" height="740" rx="24" fill="#e9efff" fill-opacity=".34" stroke="#cdd7e8" stroke-width="2"/>
+<text x="450" y="162" font-family="Arial,sans-serif" font-size="15" font-weight="700" letter-spacing="1.1" fill="#52627d">SINGLE HOST · LINUX VM · COMPOSE BOUNDARY</text>
+<line x1="220.0" y1="380.0" x2="223.0" y2="515.0" stroke="#2864e8" stroke-width="5"/>
+<polygon points="223.0,515.0 215.66847669590152,500.1592194935219 229.66502118554405,499.8481851715298" fill="#2864e8"/>
+<line x1="375.0" y1="600.0" x2="490.0" y2="410.0" stroke="#2864e8" stroke-width="5"/>
+<polygon points="490.0,410.0 488.221460362041,426.4571199411139 476.2444592557858,419.2078824294331" fill="#2864e8"/>
+<line x1="670.0" y1="460.0" x2="674.0" y2="530.0" stroke="#2864e8" stroke-width="5"/>
+<polygon points="674.0,530.0 666.1556538009544,515.42377851741 680.1328524828901,514.6250814498708" fill="#2864e8"/>
+<line x1="850.0" y1="315.0" x2="960.0" y2="315.0" stroke="#2864e8" stroke-width="5"/>
+<polygon points="960.0,315.0 945.0,322.0 945.0,308.0" fill="#2864e8"/>
+<line x1="1280.0" y1="400.0" x2="1260.0" y2="400.0" stroke="#2864e8" stroke-width="5"/>
+<line x1="1260.0" y1="400.0" x2="1260.0" y2="480.0" stroke="#2864e8" stroke-width="5"/>
+<line x1="1260.0" y1="480.0" x2="875.0" y2="480.0" stroke="#2864e8" stroke-width="5"/>
+<line x1="875.0" y1="480.0" x2="875.0" y2="430.0" stroke="#2864e8" stroke-width="5"/>
+<line x1="875.0" y1="430.0" x2="850.0" y2="430.0" stroke="#2864e8" stroke-width="5"/>
+<polygon points="850.0,430.0 865.0,423.0 865.0,437.0" fill="#2864e8"/>
+<g filter="url(#shadow)"><rect x="65" y="210" width="310" height="170" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M83 210 H357 Q375 210 375 228 V268 H65 V228 Q65 210 83 210" fill="#4168ce"/></g>
+<text x="83" y="246" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">Existing building systems</text>
+<text x="83" y="294" font-family="Arial,sans-serif" font-size="14" fill="#17243b">BMS / HVAC / energy</text>
+<text x="83" y="319" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Access control · CCTV / VMS</text>
+<text x="83" y="344" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Network · fire alarm</text>
+<g filter="url(#shadow)"><rect x="65" y="515" width="310" height="190" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M83 515 H357 Q375 515 375 533 V573 H65 V533 Q65 515 83 515" fill="#198eaa"/></g>
+<text x="83" y="551" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">Connector / integration</text>
+<text x="83" y="599" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Vendor adapters (future)</text>
+<text x="83" y="624" font-family="Arial,sans-serif" font-size="14" fill="#17243b">HTTP / SDK / protocol edge</text>
+<text x="83" y="649" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Normalize → source-scoped batch</text>
+<g filter="url(#shadow)"><rect x="490" y="205" width="360" height="255" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M508 205 H832 Q850 205 850 223 V263 H490 V223 Q490 205 508 205" fill="#284fb7"/></g>
+<text x="508" y="241" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">ANZMA Core · API container</text>
+<text x="508" y="289" font-family="Arial,sans-serif" font-size="14" fill="#17243b">FastAPI + dashboard</text>
+<text x="508" y="314" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Auth · ingestion · tool registry</text>
+<text x="508" y="339" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Deterministic analytics</text>
+<text x="508" y="364" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Evidence + data quality</text>
+<g filter="url(#shadow)"><rect x="490" y="530" width="360" height="225" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M508 530 H832 Q850 530 850 548 V588 H490 V548 Q490 530 508 530" fill="#3970bf"/></g>
+<text x="508" y="566" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">Data services · containers</text>
+<text x="508" y="614" font-family="Arial,sans-serif" font-size="14" fill="#17243b">PostgreSQL 16 + persistent volume</text>
+<text x="508" y="639" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Freshness worker (opt-in)</text>
+<text x="508" y="664" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Alerts · incidents · state evidence</text>
+<g filter="url(#shadow)"><rect x="960" y="205" width="285" height="220" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M978 205 H1227 Q1245 205 1245 223 V263 H960 V223 Q960 205 978 205" fill="#7458c5"/></g>
+<text x="978" y="241" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">Local AI runtime</text>
+<text x="978" y="289" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Ollama or vLLM</text>
+<text x="978" y="314" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Qwen / Llama model files</text>
+<text x="978" y="339" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Private endpoint; no public port</text>
+<g filter="url(#shadow)"><rect x="1280" y="205" width="230" height="220" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M1298 205 H1492 Q1510 205 1510 223 V263 H1280 V223 Q1280 205 1298 205" fill="#188b82"/></g>
+<text x="1298" y="241" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">Customer access</text>
+<text x="1298" y="289" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Browser dashboard</text>
+<text x="1298" y="314" font-family="Arial,sans-serif" font-size="14" fill="#17243b">AI assistant · alerts</text>
+<text x="1298" y="339" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Reports / export</text>
+<g filter="url(#shadow)"><rect x="960" y="530" width="550" height="225" rx="18" fill="#ffffff" stroke="#cdd7e8" stroke-width="1.5"/><path d="M978 530 H1492 Q1510 530 1510 548 V588 H960 V548 Q960 530 978 530" fill="#4c6e93"/></g>
+<text x="978" y="566" font-family="Arial,sans-serif" font-size="17" font-weight="700" fill="#ffffff">Operations &amp; recovery</text>
+<text x="978" y="614" font-family="Arial,sans-serif" font-size="14" fill="#17243b">TLS reverse proxy → HTTPS only</text>
+<text x="978" y="639" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Backups to separate protected target</text>
+<text x="978" y="664" font-family="Arial,sans-serif" font-size="14" fill="#17243b">Health / ready · logs · monitoring</text>
+<text x="1550" y="976" text-anchor="end" font-family="Arial,sans-serif" font-size="12" fill="#52627d">ANZMA AI Insight · Architecture proposal · 25 Nov 2026</text>
+</svg>

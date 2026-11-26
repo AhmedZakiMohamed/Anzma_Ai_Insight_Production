@@ -8,6 +8,7 @@ Run:  python test_day2_integration.py          (needs a reachable PostgreSQL; se
 Driver: psycopg2 or psycopg (v3); force one with ANZMA_DRIVER=psycopg2|psycopg.
 """
 import os
+import subprocess
 import sys
 from datetime import timedelta, datetime, timezone
 
@@ -67,6 +68,15 @@ def build_database():
             c.execute(sql)                                 # idempotent: a second run must not fail
             conn.commit()
     conn.commit()
+    # Building-scoped evidence needs the stable codes provided by migration 013.
+    # Advance this disposable fixture through the official runner before tests.
+    env = dict(os.environ, PGDATABASE=TEST_DB)
+    migration_command = [sys.executable, os.path.join(ROOT, "scripts", "apply_migrations.py"), "--yes"]
+    if HOST.strip().lower() in {"localhost", "127.0.0.1", "::1", "host.docker.internal"}:
+        migration_command += ["--allow-host-target", TEST_DB]
+    migrated = subprocess.run(migration_command, cwd=ROOT, env=env, capture_output=True, text=True)
+    if migrated.returncode:
+        raise RuntimeError(migrated.stdout + migrated.stderr)
     return conn, before, after
 
 

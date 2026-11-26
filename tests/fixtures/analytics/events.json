@@ -1,0 +1,664 @@
+{
+  "fixture_meta": {
+    "fixture_set": "anzma-v02-golden-analytics",
+    "draft_version": "0.3-for-review",
+    "revision_notes": [
+      "0.2: S-H1 corrected (coverage ends before period end, so complete=false and the state at period end is UNKNOWN).",
+      "0.2: S-C2 second legacy row moved to 10:00:01Z so the two rows have different legacy natural keys (asset + event type + timestamp) and can both exist as stored rows.",
+      "0.2: READY_FOR_CORE renamed CONTRACT_SHAPE_ONLY_REPO_UNVERIFIED (the repository was never inspected).",
+      "0.2: added S-P1, S-P2, S-Q1, S-Q2, S-R, S-T1, S-T2 (missing/invalid timezone, offset-less timestamp, explicit offset, truncation, DST missing and repeated local midnight).",
+      "0.2: ranking metric fixed as outages_started_in_period (team confirmation); RANKING_METRIC_PROPOSED dependency removed. The ADR text still lists it as Proposed and should be updated separately.",
+      "0.3: repository inspected (docs/ADR_GOLDEN_FIXTURES_RESOLUTION.md). Migration 014 added door_opened/access_granted, so CATALOGUE_NO_DOOR_OPENED / CATALOGUE_NO_ACCESS_GRANTED are resolved and the door mappings now name the catalogue types. DOOR_FORCED_OPEN maps to door_forced and is never counted as a normal opening (see expectations S-E1/S-E2).",
+      "0.3: READY_FOR_CORE and CONTRACT_SHAPE_ONLY_REPO_UNVERIFIED replaced by PROTOTYPE_REPLAY_VERIFIED / NEEDS_DECISION / BLOCKED_*. PROTOTYPE_REPLAY_VERIFIED is test readiness on synthetic data only, NOT real vendor connector readiness (none exists in the repository)."
+    ],
+    "path": "tests/fixtures/analytics/events.json",
+    "paired_file": "tests/fixtures/analytics/expectations.json",
+    "semantic_reference": "docs/ADR-0001-analytics-semantics.md (D-01..D-12, clarifications A..I)",
+    "synthetic_only": true,
+    "repository_inspected": true,
+    "repository_inspection_note": "0.3: the repository was inspected statically (code, migrations 003-014, contract, tests). The unit tests replay these fixtures; the PostgreSQL integration tests were NOT executed in the environment that produced 0.3. Fixture statuses describe prototype/test readiness only.",
+    "id_conventions": {
+      "EV-*": "Core-ingestible event; the id is the source_event_id",
+      "V-*": "raw vendor event that cannot currently be ingested into the Core (unsupported by catalogue/contract)",
+      "LEG-*": "stored legacy /events row with source_event_id NULL (fixture-only row key, not a real database id)",
+      "Q-*": "quarantine / rejected-record fixture (not ingestible under contract 1.0)",
+      "OBS-*": "source-liveness, freshness or data-gap observation using the existing model values"
+    },
+    "status_values": {
+      "PROTOTYPE_REPLAY_VERIFIED": "The scenario is replayed by unit tests against the implemented tool on synthetic data with an injected coverage provider and matches this oracle. NOT a claim that a real vendor connector, vendor-to-catalogue mapping, retrieval-completion reporting or production CoverageProvider exists: none does (only connectors/reference_simulator).",
+      "NEEDS_DECISION": "Fixture and implementation differ on a point the approved rules do not settle; see docs/ADR_GOLDEN_FIXTURES_RESOLUTION.md.",
+      "CONTRACT_SHAPE_ONLY_REPO_UNVERIFIED": "Ingestion records use existing catalogue types and the contract 1.0 shape as stated in the brief, but the repository was not inspected: asset/system compatibility is assumed from event names and runnability in the current project is NOT established.",
+      "BLOCKED_BY_TOOL_CONTRACT": "Needs a tool parameter or result rule that is not defined in the tool signatures or the ADR.",
+      "BLOCKED_BY_CATALOGUE": "Needs an event type that does not exist in the Core catalogue (unused since migration 014; only unlock_command is still absent).",
+      "BLOCKED_BY_SCHEMA": "Needs a field/storage path that contract 1.0 or the database does not have.",
+      "BLOCKED_BY_CONNECTOR": "Needs connector-reported retrieval completion or coverage that is not defined today.",
+      "NEEDS_REPO_VERIFICATION": "Whether the current repository behaves as the scenario requires could not be established."
+    },
+    "dependency_codes": {
+      "CATALOGUE_NO_DOOR_OPENED": "RESOLVED by migration 014 (door_opened exists). Kept only so old references stay readable.",
+      "CATALOGUE_NO_ACCESS_GRANTED": "RESOLVED by migration 014 (access_granted exists; it is authorisation only, never an opening).",
+      "CATALOGUE_NO_UNLOCK_COMMAND": "No unlock_command event type exists.",
+      "CONTRACT_NO_PHYSICAL_OPEN_CONFIRMATION": "Contract 1.0 cannot express that a door_forced event confirms physical opening (ADR open question b).",
+      "CONTRACT_NO_CORRELATION_FIELD": "Contract 1.0 has no correlation identifier; fixture-only attributes are used (ADR open question b).",
+      "EVENT_DEDUP_ENFORCEMENT_UNVERIFIED": "RESOLVED statically: unique index uq_event_source_event_id (migration 006) enforces (source_id, source_event_id) when both are non-null; legacy rows use uq_event_legacy_natural_key (migration 007). Not re-executed against PostgreSQL here.",
+      "LEGACY_ROW_IDENTITY_HANDLING_UNVERIFIED": "How analytics reads legacy rows with NULL source_event_id (and their source attribution) is unverified (ADR open question f).",
+      "CONTRACT_NO_TIMESTAMP_QUALITY_OR_QUARANTINE": "No timestamp_quality field or quarantine path exists; observed_at is required and probably NOT NULL (ADR D-11, open question f).",
+      "CONNECTOR_NO_COMPLETION_STATUS": "No connector retrieval-completion status is defined or stored (ADR D-12, open question g).",
+      "LIVENESS_GAP_READING_UNVERIFIED": "Whether analytics reads existing freshness/liveness/data-gap records and their exact value shapes is unverified.",
+      "RESULT_STATUS_ENUM_PROPOSED": "COMPLETE/PARTIAL/UNSUPPORTED/CANNOT_COMPUTE is only Proposed in the ADR (open question g).",
+      "LOOKBACK_HORIZON_OPEN_QUESTION_D": "Look-back horizon is an open question; fixture assumes the last reliable earlier transition is readable.",
+      "TIMEZONE_COLUMN_BEHAVIOUR_UNVERIFIED": "Whether a building can actually hold a NULL or an invalid timezone value (versus validation at write time) is unverified; if not reachable through data, the case must be tested at unit level.",
+      "VALIDATION_ERROR_SHAPE_UNDEFINED": "The API error shape and error codes for rejected input are not defined; the codes in the fixtures are labels.",
+      "RESULT_LIMIT_PARAMETER_UNDEFINED": "Neither tool signature has a result limit; max_rows is a fixture-only parameter used only to exercise truncated=true.",
+      "TOTAL_ROWS_SEMANTICS_ASSUMED": "Assumed: total_rows is the number of rows before truncation. The ADR does not define it.",
+      "ROW_EMISSION_RULE_ASSUMED": "Fixtures assume a row is emitted only for an asset/door that has at least one eligible event; the ADR does not say.",
+      "FIXTURE_TIMEZONE_RULES_UNVERIFIED_AGAINST_TZDATA": "Offsets and transition dates were derived by hand from the published rules and must be checked against tzdata by a human reviewer.",
+      "ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED": "Event-type/system-type compatibility was assumed from names."
+    },
+    "global_assumptions": [
+      "Africa/Cairo is used as a fixture timezone for buildings BLD-ALPHA and BLD-BRAVO. On 2026-11-01..2026-11-03 it is assumed to be on standard time, UTC+02:00 (Egyptian DST assumed to end on 2026-10-29). The production building timezone is unknown.",
+      "Europe/Berlin is a test-only fixture timezone (scenario S-B), not a production default.",
+      "The ADR's external_event_id is treated as the contract's source_event_id.",
+      "Result statuses and field names for expected results follow the ADR's Proposed schema and are not a decided contract.",
+      "Source coverage (pages/range fetched) cannot be recorded today; each scenario's source_coverage is a fixture assertion, so complete=true is conditional on that mechanism existing.",
+      "Request end dates are inclusive calendar dates in the building timezone (D-10); the internal interval is [start_utc, end_utc)."
+    ]
+  },
+  "scenarios": [
+    {
+      "scenario_id": "S-A-AFTER-HOURS-BOUNDARY",
+      "adr_golden_ids": ["G-DOOR-04", "G-DOOR-05", "G-PER-01"],
+      "tool": "doors.after_hours",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["ROW_EMISSION_RULE_ASSUMED"],
+      "building": {"building_code": "BLD-ALPHA", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00 on 2026-11-01"},
+      "source": {"source_code": "SRC-DOOR-A", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "DOOR-A1", "external_id": "EXT-DOOR-A1", "system_type": "ACCESS_CONTROL"}],
+      "request": {"start": "2026-11-01", "end": "2026-11-01", "after_local": "20:00", "building": "BLD-ALPHA", "zone": null, "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-10-31T22:00:00Z", "covered_to_utc": "2026-11-02T06:00:00Z", "data_as_of": "2026-11-02T06:00:00Z"},
+      "raw_vendor_events": [
+        {"fixture_event_id": "V-A-01", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-A-0001", "vendor_asset_external_id": "EXT-DOOR-A1", "observed_at_utc": "2026-11-01T17:59:59Z", "local_time_reference": "2026-11-01T19:59:59+02:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor"}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}},
+        {"fixture_event_id": "V-A-02", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-A-0002", "vendor_asset_external_id": "EXT-DOOR-A1", "observed_at_utc": "2026-11-01T18:00:00Z", "local_time_reference": "2026-11-01T20:00:00+02:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor"}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}},
+        {"fixture_event_id": "V-A-03", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-A-0003", "vendor_asset_external_id": "EXT-DOOR-A1", "observed_at_utc": "2026-11-01T18:00:01Z", "local_time_reference": "2026-11-01T20:00:01+02:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor"}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}},
+        {"fixture_event_id": "V-A-04", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-A-0004", "vendor_asset_external_id": "EXT-DOOR-A1", "observed_at_utc": "2026-11-01T21:59:59Z", "local_time_reference": "2026-11-01T23:59:59+02:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor"}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}},
+        {"fixture_event_id": "V-A-05", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-A-0005", "vendor_asset_external_id": "EXT-DOOR-A1", "observed_at_utc": "2026-11-01T22:00:00Z", "local_time_reference": "2026-11-02T00:00:00+02:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor"}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}}
+      ],
+      "core_ingestion_batches": []
+    },
+    {
+      "scenario_id": "S-B-DST-CROSSING",
+      "adr_golden_ids": ["G-PER-02", "G-PER-03"],
+      "tool": "doors.after_hours",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["FIXTURE_TIMEZONE_RULES_UNVERIFIED_AGAINST_TZDATA", "ROW_EMISSION_RULE_ASSUMED"],
+      "building": {"building_code": "BLD-DST-TEST", "timezone": "Europe/Berlin", "timezone_note": "TEST-ONLY fixture timezone, not a production default. Transition: 2026-10-25 at 03:00 CEST (+02:00) clocks go back to 02:00 CET (+01:00), i.e. at 2026-10-25T01:00:00Z."},
+      "source": {"source_code": "SRC-DOOR-B", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "DOOR-B1", "external_id": "EXT-DOOR-B1", "system_type": "ACCESS_CONTROL"}],
+      "request": {"start": "2026-10-24", "end": "2026-10-26", "after_local": "20:00", "building": "BLD-DST-TEST", "zone": null, "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-10-23T22:00:00Z", "covered_to_utc": "2026-10-27T06:00:00Z", "data_as_of": "2026-10-27T06:00:00Z"},
+      "raw_vendor_events": [
+        {"fixture_event_id": "V-B-01", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-B-0001", "vendor_asset_external_id": "EXT-DOOR-B1", "observed_at_utc": "2026-10-24T17:59:59Z", "local_time_reference": "2026-10-24T19:59:59+02:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor"}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}},
+        {"fixture_event_id": "V-B-02", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-B-0002", "vendor_asset_external_id": "EXT-DOOR-B1", "observed_at_utc": "2026-10-24T18:00:00Z", "local_time_reference": "2026-10-24T20:00:00+02:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor"}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}},
+        {"fixture_event_id": "V-B-03", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-B-0003", "vendor_asset_external_id": "EXT-DOOR-B1", "observed_at_utc": "2026-10-25T18:30:00Z", "local_time_reference": "2026-10-25T19:30:00+01:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor"}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}},
+        {"fixture_event_id": "V-B-04", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-B-0004", "vendor_asset_external_id": "EXT-DOOR-B1", "observed_at_utc": "2026-10-25T19:00:00Z", "local_time_reference": "2026-10-25T20:00:00+01:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor"}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}},
+        {"fixture_event_id": "V-B-05", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-B-0005", "vendor_asset_external_id": "EXT-DOOR-B1", "observed_at_utc": "2026-10-25T22:59:59Z", "local_time_reference": "2026-10-25T23:59:59+01:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor"}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}},
+        {"fixture_event_id": "V-B-06", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-B-0006", "vendor_asset_external_id": "EXT-DOOR-B1", "observed_at_utc": "2026-10-25T23:00:00Z", "local_time_reference": "2026-10-26T00:00:00+01:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor"}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}},
+        {"fixture_event_id": "V-B-07", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-B-0007", "vendor_asset_external_id": "EXT-DOOR-B1", "observed_at_utc": "2026-10-26T19:00:00Z", "local_time_reference": "2026-10-26T20:00:00+01:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor"}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}},
+        {"fixture_event_id": "V-B-08", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-B-0008", "vendor_asset_external_id": "EXT-DOOR-B1", "observed_at_utc": "2026-10-26T23:00:00Z", "local_time_reference": "2026-10-27T00:00:00+01:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor"}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}}
+      ],
+      "core_ingestion_batches": []
+    },
+    {
+      "scenario_id": "S-C1-DUPLICATE-DELIVERY",
+      "adr_golden_ids": ["G-DUP-01"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["EVENT_DEDUP_ENFORCEMENT_UNVERIFIED", "ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "RESULT_STATUS_ENUM_PROPOSED"],
+      "explanation_batch_vs_event_identity": "Batch idempotency key = (source, batch_id): it decides whether a whole batch submission is a replay (same key, different content: first write wins). Event identity = (source, source_event_id): it decides whether two event records are the same source event. Here every redelivery uses a NEW batch_id, so batch idempotency does not suppress anything; only event identity can. Event payloads are byte-identical across deliveries.",
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-CCTV-C1", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-C1", "external_id": "EXT-CAM-C1", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "delivery_order": [
+        {"order": 1, "batch_id": "B-C1-001", "event_ids": ["EV-C1-001", "EV-C1-002"]},
+        {"order": 2, "batch_id": "B-C1-002", "event_ids": ["EV-C1-001"]},
+        {"order": 3, "batch_id": "B-C1-003", "event_ids": ["EV-C1-002"]}
+      ],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-C1", "batch_id": "B-C1-001", "events": [
+          {"source": "SRC-CCTV-C1", "source_event_id": "EV-C1-001", "asset_code": "CAM-C1", "event_type": "camera_offline", "observed_at": "2026-11-02T10:00:00Z"},
+          {"source": "SRC-CCTV-C1", "source_event_id": "EV-C1-002", "asset_code": "CAM-C1", "event_type": "camera_online", "observed_at": "2026-11-02T10:30:00Z"}
+        ]},
+        {"source": "SRC-CCTV-C1", "batch_id": "B-C1-002", "events": [
+          {"source": "SRC-CCTV-C1", "source_event_id": "EV-C1-001", "asset_code": "CAM-C1", "event_type": "camera_offline", "observed_at": "2026-11-02T10:00:00Z"}
+        ]},
+        {"source": "SRC-CCTV-C1", "batch_id": "B-C1-003", "events": [
+          {"source": "SRC-CCTV-C1", "source_event_id": "EV-C1-002", "asset_code": "CAM-C1", "event_type": "camera_online", "observed_at": "2026-11-02T10:30:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-C2-LEGACY-NULL-IDENTITY",
+      "adr_golden_ids": ["G-DUP-02"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["LEGACY_ROW_IDENTITY_HANDLING_UNVERIFIED", "ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "RESULT_STATUS_ENUM_PROPOSED"],
+      "note": "Legacy rows are stored rows written by the old POST /events path, not contract 1.0 ingestion records. The legacy natural key is asset + event type + timestamp, so two rows with an identical key might not both be storable. LEG-C2-001 (10:00:00Z) and LEG-C2-002 (10:00:01Z) therefore differ by 1 second: distinct natural keys, same event type and payload. The test is that similarity must not cause a merge. The fixture row keys LEG-* are fixture-only. The source attribution of legacy rows is unknown; SRC-LEGACY-C2 is a fixture-only placeholder.",
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-LEGACY-C2", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-C2", "external_id": "EXT-CAM-C2", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "legacy_stored_rows": [
+        {"fixture_row_id": "LEG-C2-001", "source_event_id": null, "asset_code": "CAM-C2", "event_type": "camera_offline", "observed_at": "2026-11-02T10:00:00Z", "payload": {"note": "identical payload"}},
+        {"fixture_row_id": "LEG-C2-002", "source_event_id": null, "asset_code": "CAM-C2", "event_type": "camera_offline", "observed_at": "2026-11-02T10:00:01Z", "payload": {"note": "identical payload"}},
+        {"fixture_row_id": "LEG-C2-003", "source_event_id": null, "asset_code": "CAM-C2", "event_type": "camera_online", "observed_at": "2026-11-02T10:30:00Z", "payload": {"note": "closing row"}}
+      ],
+      "core_ingestion_batches": []
+    },
+    {
+      "scenario_id": "S-D-NO-PHYSICAL-OPENING",
+      "adr_golden_ids": ["G-DOOR-01"],
+      "tool": "doors.after_hours",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["CATALOGUE_NO_UNLOCK_COMMAND"],
+      "building": {"building_code": "BLD-ALPHA", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00 on 2026-11-01"},
+      "source": {"source_code": "SRC-DOOR-D", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "DOOR-D1", "external_id": "EXT-DOOR-D1", "system_type": "ACCESS_CONTROL"}],
+      "request": {"start": "2026-11-01", "end": "2026-11-01", "after_local": "20:00", "building": "BLD-ALPHA", "zone": null, "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-10-31T22:00:00Z", "covered_to_utc": "2026-11-02T06:00:00Z", "data_as_of": "2026-11-02T06:00:00Z"},
+      "raw_vendor_events": [
+        {"fixture_event_id": "V-D-01", "vendor_event_type": "ACCESS_GRANTED", "vendor_event_id": "VEND-D-0001", "vendor_asset_external_id": "EXT-DOOR-D1", "observed_at_utc": "2026-11-01T19:00:00Z", "local_time_reference": "2026-11-01T21:00:00+02:00", "fixture_only_attributes": {"physical_open_evidence": null}, "mapping": {"canonical_term": "ACCESS_GRANTED", "core_event_type": "access_granted", "dependency": null}},
+        {"fixture_event_id": "V-D-02", "vendor_event_type": "UNLOCK_COMMAND", "vendor_event_id": "VEND-D-0002", "vendor_asset_external_id": "EXT-DOOR-D1", "observed_at_utc": "2026-11-01T19:00:05Z", "local_time_reference": "2026-11-01T21:00:05+02:00", "fixture_only_attributes": {"physical_open_evidence": null}, "mapping": {"canonical_term": "UNLOCK_COMMAND", "core_event_type": null, "dependency": "CATALOGUE_NO_UNLOCK_COMMAND"}}
+      ],
+      "core_ingestion_batches": []
+    },
+    {
+      "scenario_id": "S-E1-DOOR-CORRELATED",
+      "adr_golden_ids": ["G-DOOR-02"],
+      "tool": "doors.after_hours",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["CONTRACT_NO_CORRELATION_FIELD", "CONTRACT_NO_PHYSICAL_OPEN_CONFIRMATION", "ROW_EMISSION_RULE_ASSUMED"],
+      "building": {"building_code": "BLD-ALPHA", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00 on 2026-11-01"},
+      "source": {"source_code": "SRC-DOOR-E1", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "DOOR-E1", "external_id": "EXT-DOOR-E1", "system_type": "ACCESS_CONTROL"}],
+      "request": {"start": "2026-11-01", "end": "2026-11-01", "after_local": "20:00", "building": "BLD-ALPHA", "zone": null, "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-10-31T22:00:00Z", "covered_to_utc": "2026-11-02T06:00:00Z", "data_as_of": "2026-11-02T06:00:00Z"},
+      "raw_vendor_events": [
+        {"fixture_event_id": "V-E1-01", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-E1-0001", "vendor_asset_external_id": "EXT-DOOR-E1", "observed_at_utc": "2026-11-01T20:00:00Z", "local_time_reference": "2026-11-01T22:00:00+02:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor", "correlation_id": "CORR-E1-0001"}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}},
+        {"fixture_event_id": "V-E1-02", "vendor_event_type": "DOOR_FORCED_OPEN", "vendor_event_id": "VEND-E1-0002", "vendor_asset_external_id": "EXT-DOOR-E1", "observed_at_utc": "2026-11-01T20:00:01Z", "local_time_reference": "2026-11-01T22:00:01+02:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor", "correlation_id": "CORR-E1-0001"}, "mapping": {"canonical_term": "DOOR_FORCED_OPEN", "core_event_type": "door_forced (exists, but cannot express physical-open confirmation)", "dependency": "CONTRACT_NO_PHYSICAL_OPEN_CONFIRMATION"}}
+      ],
+      "core_ingestion_batches": []
+    },
+    {
+      "scenario_id": "S-E2-DOOR-UNCORRELATED",
+      "adr_golden_ids": ["G-DOOR-03"],
+      "tool": "doors.after_hours",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["CONTRACT_NO_CORRELATION_FIELD", "CONTRACT_NO_PHYSICAL_OPEN_CONFIRMATION", "ROW_EMISSION_RULE_ASSUMED"],
+      "building": {"building_code": "BLD-ALPHA", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00 on 2026-11-01"},
+      "source": {"source_code": "SRC-DOOR-E2", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "DOOR-E2", "external_id": "EXT-DOOR-E2", "system_type": "ACCESS_CONTROL"}],
+      "request": {"start": "2026-11-01", "end": "2026-11-01", "after_local": "20:00", "building": "BLD-ALPHA", "zone": null, "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-10-31T22:00:00Z", "covered_to_utc": "2026-11-02T06:00:00Z", "data_as_of": "2026-11-02T06:00:00Z"},
+      "raw_vendor_events": [
+        {"fixture_event_id": "V-E2-01", "vendor_event_type": "DOOR_OPENED", "vendor_event_id": "VEND-E2-0001", "vendor_asset_external_id": "EXT-DOOR-E2", "observed_at_utc": "2026-11-01T20:30:00Z", "local_time_reference": "2026-11-01T22:30:00+02:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor", "correlation_id": null}, "mapping": {"canonical_term": "DOOR_OPENED", "core_event_type": "door_opened", "dependency": null}},
+        {"fixture_event_id": "V-E2-02", "vendor_event_type": "DOOR_FORCED_OPEN", "vendor_event_id": "VEND-E2-0002", "vendor_asset_external_id": "EXT-DOOR-E2", "observed_at_utc": "2026-11-01T20:30:01Z", "local_time_reference": "2026-11-01T22:30:01+02:00", "fixture_only_attributes": {"physical_open_evidence": "door_contact_sensor", "correlation_id": null}, "mapping": {"canonical_term": "DOOR_FORCED_OPEN", "core_event_type": "door_forced (exists, but cannot express physical-open confirmation)", "dependency": "CONTRACT_NO_PHYSICAL_OPEN_CONFIRMATION"}}
+      ],
+      "core_ingestion_batches": []
+    },
+    {
+      "scenario_id": "S-F-REPEATED-OFFLINE",
+      "adr_golden_ids": ["G-OFF-03"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-CCTV-F", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-F1", "external_id": "EXT-CAM-F1", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-F", "batch_id": "B-F-001", "events": [
+          {"source": "SRC-CCTV-F", "source_event_id": "EV-F-001", "asset_code": "CAM-F1", "event_type": "camera_offline", "observed_at": "2026-11-02T08:00:00Z"},
+          {"source": "SRC-CCTV-F", "source_event_id": "EV-F-002", "asset_code": "CAM-F1", "event_type": "camera_offline", "observed_at": "2026-11-02T08:05:00Z"},
+          {"source": "SRC-CCTV-F", "source_event_id": "EV-F-003", "asset_code": "CAM-F1", "event_type": "camera_offline", "observed_at": "2026-11-02T08:10:00Z"},
+          {"source": "SRC-CCTV-F", "source_event_id": "EV-F-004", "asset_code": "CAM-F1", "event_type": "camera_online", "observed_at": "2026-11-02T08:20:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-G1-OUTAGE-STARTED-BEFORE-PERIOD",
+      "adr_golden_ids": ["G-OFF-08"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-CCTV-G1", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-G1", "external_id": "EXT-CAM-G1", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-G1", "batch_id": "B-G1-001", "events": [
+          {"source": "SRC-CCTV-G1", "source_event_id": "EV-G1-001", "asset_code": "CAM-G1", "event_type": "camera_offline", "observed_at": "2026-11-01T20:00:00Z"},
+          {"source": "SRC-CCTV-G1", "source_event_id": "EV-G1-002", "asset_code": "CAM-G1", "event_type": "camera_online", "observed_at": "2026-11-02T01:00:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-G2-NO-EARLIER-TRANSITION",
+      "adr_golden_ids": ["G-OFF-09"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-CCTV-G2", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-G2", "external_id": "EXT-CAM-G2", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-G2", "batch_id": "B-G2-001", "events": [
+          {"source": "SRC-CCTV-G2", "source_event_id": "EV-G2-001", "asset_code": "CAM-G2", "event_type": "camera_offline", "observed_at": "2026-11-02T05:00:00Z"},
+          {"source": "SRC-CCTV-G2", "source_event_id": "EV-G2-002", "asset_code": "CAM-G2", "event_type": "camera_online", "observed_at": "2026-11-02T05:30:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-H1-OPEN-OUTAGE-DATA-AS-OF-BEFORE-END",
+      "adr_golden_ids": ["G-OFF-10"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-CCTV-H1", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-H1", "external_id": "EXT-CAM-H1", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_PARTIAL", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-02T21:00:00Z", "data_as_of": "2026-11-02T21:00:00Z", "note": "coverage ends one hour before the period end (22:00:00Z)"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-H1", "batch_id": "B-H1-001", "events": [
+          {"source": "SRC-CCTV-H1", "source_event_id": "EV-H1-001", "asset_code": "CAM-H1", "event_type": "camera_offline", "observed_at": "2026-11-02T20:00:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-H2-OPEN-OUTAGE-DATA-AS-OF-AFTER-END",
+      "adr_golden_ids": ["G-OFF-05", "G-OFF-11"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-CCTV-H2", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-H2", "external_id": "EXT-CAM-H2", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T01:00:00Z", "data_as_of": "2026-11-03T01:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-H2", "batch_id": "B-H2-001", "events": [
+          {"source": "SRC-CCTV-H2", "source_event_id": "EV-H2-001", "asset_code": "CAM-H2", "event_type": "camera_offline", "observed_at": "2026-11-02T20:00:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-I-ORPHAN-OFFLINE-END",
+      "adr_golden_ids": ["G-OFF-04"],
+      "tool": "devices.offline_frequency",
+      "status": "NEEDS_DECISION",
+      "dependencies": ["ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "ROW_EMISSION_RULE_ASSUMED", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-CCTV-I", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-I1", "external_id": "EXT-CAM-I1", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-I", "batch_id": "B-I-001", "events": [
+          {"source": "SRC-CCTV-I", "source_event_id": "EV-I-001", "asset_code": "CAM-I1", "event_type": "camera_offline", "observed_at": "2026-11-01T10:00:00Z"},
+          {"source": "SRC-CCTV-I", "source_event_id": "EV-I-002", "asset_code": "CAM-I1", "event_type": "camera_online", "observed_at": "2026-11-01T11:00:00Z"},
+          {"source": "SRC-CCTV-I", "source_event_id": "EV-I-003", "asset_code": "CAM-I1", "event_type": "camera_online", "observed_at": "2026-11-02T12:00:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-J-SOURCE-SILENCE",
+      "adr_golden_ids": ["G-OFF-02"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["LIVENESS_GAP_READING_UNVERIFIED", "RESULT_STATUS_ENUM_PROPOSED"],
+      "note": "No equipment event exists. The observations use the existing model vocabulary (liveness SILENT, freshness STALE, data gap). The time values are fixture assertions; no silence threshold is defined or invented here.",
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-CCTV-J", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-J1", "external_id": "EXT-CAM-J1", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_PARTIAL", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-02T06:00:00Z", "data_as_of": "2026-11-02T06:00:00Z"},
+      "source_observations": [
+        {"observation_id": "OBS-J-01", "type": "DATA_GAP", "source_code": "SRC-CCTV-J", "gap_from_utc": "2026-11-02T06:00:00Z", "gap_to_utc": "2026-11-02T22:00:00Z", "gap_note": "gap still open at the end of the requested period"},
+        {"observation_id": "OBS-J-02", "type": "SOURCE_LIVENESS", "source_code": "SRC-CCTV-J", "state": "SILENT", "as_of_utc": "2026-11-02T22:00:00Z"},
+        {"observation_id": "OBS-J-03", "type": "ASSET_FRESHNESS", "asset_code": "CAM-J1", "state": "STALE", "as_of_utc": "2026-11-02T22:00:00Z"}
+      ],
+      "raw_vendor_events": [],
+      "core_ingestion_batches": []
+    },
+    {
+      "scenario_id": "S-K-FLAPPING-DISABLED",
+      "adr_golden_ids": ["G-OFF-06", "G-OFF-07"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-NET-K", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "SW-K1", "external_id": "EXT-SW-K1", "system_type": "NETWORKING"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["NETWORKING"], "source": null, "flapping_window": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-NET-K", "batch_id": "B-K-001", "events": [
+          {"source": "SRC-NET-K", "source_event_id": "EV-K-001", "asset_code": "SW-K1", "event_type": "link_down", "observed_at": "2026-11-02T09:00:00Z"},
+          {"source": "SRC-NET-K", "source_event_id": "EV-K-002", "asset_code": "SW-K1", "event_type": "link_up", "observed_at": "2026-11-02T09:02:00Z"},
+          {"source": "SRC-NET-K", "source_event_id": "EV-K-003", "asset_code": "SW-K1", "event_type": "link_down", "observed_at": "2026-11-02T09:03:00Z"},
+          {"source": "SRC-NET-K", "source_event_id": "EV-K-004", "asset_code": "SW-K1", "event_type": "link_up", "observed_at": "2026-11-02T09:04:30Z"},
+          {"source": "SRC-NET-K", "source_event_id": "EV-K-005", "asset_code": "SW-K1", "event_type": "link_down", "observed_at": "2026-11-02T09:06:00Z"},
+          {"source": "SRC-NET-K", "source_event_id": "EV-K-006", "asset_code": "SW-K1", "event_type": "link_up", "observed_at": "2026-11-02T09:07:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-L-FAULT-PAIRS-NOT-OFFLINE",
+      "adr_golden_ids": ["G-OFF-01"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-HVAC-L / SRC-FIRE-L", "capabilities_declared": ["history.events"]},
+      "assets": [
+        {"asset_code": "AHU-L1", "external_id": "EXT-AHU-L1", "system_type": "HVAC"},
+        {"asset_code": "FP-L1", "external_id": "EXT-FP-L1", "system_type": "FIRE_ALARM"}
+      ],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["HVAC", "FIRE_ALARM"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-HVAC-L", "batch_id": "B-L-001", "events": [
+          {"source": "SRC-HVAC-L", "source_event_id": "EV-L-001", "asset_code": "AHU-L1", "event_type": "hvac_fault", "observed_at": "2026-11-02T07:00:00Z"},
+          {"source": "SRC-HVAC-L", "source_event_id": "EV-L-002", "asset_code": "AHU-L1", "event_type": "hvac_recovered", "observed_at": "2026-11-02T07:45:00Z"}
+        ]},
+        {"source": "SRC-FIRE-L", "batch_id": "B-L-002", "events": [
+          {"source": "SRC-FIRE-L", "source_event_id": "EV-L-003", "asset_code": "FP-L1", "event_type": "fire_alarm_triggered", "observed_at": "2026-11-02T14:00:00Z"},
+          {"source": "SRC-FIRE-L", "source_event_id": "EV-L-004", "asset_code": "FP-L1", "event_type": "alarm_cleared", "observed_at": "2026-11-02T14:10:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-M-RANKING-TIES",
+      "adr_golden_ids": [],
+      "tool": "devices.offline_frequency",
+      "status": "NEEDS_DECISION",
+      "dependencies": ["ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-ALPHA and BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "both buildings use the fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-M-1 / SRC-M-2", "capabilities_declared": ["history.events"]},
+      "assets": [
+        {"asset_code": "SW-M-1", "external_id": "EXT-SW-M-1", "system_type": "NETWORKING", "building_code": "BLD-BRAVO", "source_code": "SRC-M-2"},
+        {"asset_code": "CAM-M-9", "external_id": "EXT-CAM-M-9", "system_type": "CCTV", "building_code": "BLD-ALPHA", "source_code": "SRC-M-2"},
+        {"asset_code": "CAM-M-1", "external_id": "EXT-CAM-M-1", "system_type": "CCTV", "building_code": "BLD-BRAVO", "source_code": "SRC-M-1"},
+        {"asset_code": "CAM-M-2", "external_id": "EXT-CAM-M-2", "system_type": "CCTV", "building_code": "BLD-BRAVO", "source_code": "SRC-M-1"},
+        {"asset_code": "CAM-M-0", "external_id": "EXT-CAM-M-0", "system_type": "CCTV", "building_code": "BLD-BRAVO", "source_code": "SRC-M-2"}
+      ],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV", "NETWORKING"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-M-2", "batch_id": "B-M-001", "events": [
+          {"source": "SRC-M-2", "source_event_id": "EV-M-01", "asset_code": "SW-M-1", "event_type": "link_down", "observed_at": "2026-11-02T02:00:00Z"},
+          {"source": "SRC-M-2", "source_event_id": "EV-M-02", "asset_code": "SW-M-1", "event_type": "link_up", "observed_at": "2026-11-02T02:10:00Z"},
+          {"source": "SRC-M-2", "source_event_id": "EV-M-03", "asset_code": "SW-M-1", "event_type": "link_down", "observed_at": "2026-11-02T03:00:00Z"},
+          {"source": "SRC-M-2", "source_event_id": "EV-M-04", "asset_code": "SW-M-1", "event_type": "link_up", "observed_at": "2026-11-02T03:05:00Z"},
+          {"source": "SRC-M-2", "source_event_id": "EV-M-05", "asset_code": "CAM-M-9", "event_type": "camera_offline", "observed_at": "2026-11-02T04:00:00Z"},
+          {"source": "SRC-M-2", "source_event_id": "EV-M-06", "asset_code": "CAM-M-9", "event_type": "camera_online", "observed_at": "2026-11-02T04:01:00Z"},
+          {"source": "SRC-M-2", "source_event_id": "EV-M-11", "asset_code": "CAM-M-0", "event_type": "camera_offline", "observed_at": "2026-11-02T07:00:00Z"},
+          {"source": "SRC-M-2", "source_event_id": "EV-M-12", "asset_code": "CAM-M-0", "event_type": "camera_online", "observed_at": "2026-11-02T07:04:00Z"}
+        ]},
+        {"source": "SRC-M-1", "batch_id": "B-M-002", "events": [
+          {"source": "SRC-M-1", "source_event_id": "EV-M-07", "asset_code": "CAM-M-1", "event_type": "camera_offline", "observed_at": "2026-11-02T05:00:00Z"},
+          {"source": "SRC-M-1", "source_event_id": "EV-M-08", "asset_code": "CAM-M-1", "event_type": "camera_online", "observed_at": "2026-11-02T05:02:00Z"},
+          {"source": "SRC-M-1", "source_event_id": "EV-M-09", "asset_code": "CAM-M-2", "event_type": "camera_offline", "observed_at": "2026-11-02T06:00:00Z"},
+          {"source": "SRC-M-1", "source_event_id": "EV-M-10", "asset_code": "CAM-M-2", "event_type": "camera_online", "observed_at": "2026-11-02T06:03:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-N-MISSING-UNTRUSTED-TIMESTAMPS",
+      "adr_golden_ids": ["G-TS-01", "G-TS-02", "G-TS-03"],
+      "tool": "devices.offline_frequency",
+      "status": "BLOCKED_BY_SCHEMA",
+      "dependencies": ["CONTRACT_NO_TIMESTAMP_QUALITY_OR_QUARANTINE", "ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "RESULT_STATUS_ENUM_PROPOSED"],
+      "note": "EV-N-001/EV-N-002 are valid contract 1.0 records (GOOD timestamps) and could be ingested today. Q-N-* are NOT valid Core records: one has no observed_at and one has an untrusted observed_at, and the representation of timestamp quality is undecided. They are kept only in the quarantine section.",
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-CCTV-N", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-N1", "external_id": "EXT-CAM-N1", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-N", "batch_id": "B-N-001", "events": [
+          {"source": "SRC-CCTV-N", "source_event_id": "EV-N-001", "asset_code": "CAM-N1", "event_type": "camera_offline", "observed_at": "2026-11-02T11:00:00Z"},
+          {"source": "SRC-CCTV-N", "source_event_id": "EV-N-002", "asset_code": "CAM-N1", "event_type": "camera_online", "observed_at": "2026-11-02T11:10:00Z"}
+        ]}
+      ],
+      "quarantine_records": [
+        {"fixture_record_id": "Q-N-001", "vendor_event_type": "camera_offline", "vendor_event_id": "VEND-N-0001", "asset_external_id": "EXT-CAM-N1", "observed_at": null, "timestamp_quality": "MISSING", "received_at": "2026-11-02T09:00:00Z", "exclusion_reason": "observed_at missing; received_at must not be substituted"},
+        {"fixture_record_id": "Q-N-002", "vendor_event_type": "camera_online", "vendor_event_id": "VEND-N-0002", "asset_external_id": "EXT-CAM-N1", "observed_at": "2026-11-02T09:30:00Z", "timestamp_quality": "UNTRUSTED", "received_at": "2026-11-02T09:30:05Z", "exclusion_reason": "observed_at present but marked untrusted by the source (fixture assertion)"}
+      ]
+    },
+    {
+      "scenario_id": "S-O1-PAGINATION-FAILURE",
+      "adr_golden_ids": ["G-COMP-01", "G-COMP-04"],
+      "tool": "devices.offline_frequency",
+      "status": "BLOCKED_BY_CONNECTOR",
+      "dependencies": ["CONNECTOR_NO_COMPLETION_STATUS", "ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-CCTV-O1", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-O1", "external_id": "EXT-CAM-O1", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_PARTIAL", "covered_from_utc": null, "covered_to_utc": null, "data_as_of": "2026-11-02T04:20:00Z", "note": "data_as_of is the last observed_at actually retrieved (fixture assumption)"},
+      "connector_retrieval": {
+        "fixture_only_field_names": true,
+        "capability": "history.events",
+        "pages": [
+          {"page": 1, "status": "OK", "next_cursor_present": true, "event_ids": ["EV-O1-001", "EV-O1-002"]},
+          {"page": 2, "status": "OK", "next_cursor_present": true, "event_ids": ["EV-O1-003", "EV-O1-004"]},
+          {"page": 3, "status": "ERROR", "error": "simulated upstream timeout (fixture)", "event_ids": []}
+        ],
+        "completion_status": "INCOMPLETE"
+      },
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-O1", "batch_id": "B-O1-001", "events": [
+          {"source": "SRC-CCTV-O1", "source_event_id": "EV-O1-001", "asset_code": "CAM-O1", "event_type": "camera_offline", "observed_at": "2026-11-02T02:00:00Z"},
+          {"source": "SRC-CCTV-O1", "source_event_id": "EV-O1-002", "asset_code": "CAM-O1", "event_type": "camera_online", "observed_at": "2026-11-02T02:30:00Z"}
+        ]},
+        {"source": "SRC-CCTV-O1", "batch_id": "B-O1-002", "events": [
+          {"source": "SRC-CCTV-O1", "source_event_id": "EV-O1-003", "asset_code": "CAM-O1", "event_type": "camera_offline", "observed_at": "2026-11-02T04:00:00Z"},
+          {"source": "SRC-CCTV-O1", "source_event_id": "EV-O1-004", "asset_code": "CAM-O1", "event_type": "camera_online", "observed_at": "2026-11-02T04:20:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-O2-CAPABILITY-UNSUPPORTED",
+      "adr_golden_ids": ["G-COMP-02"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-CCTV-O2", "capabilities_declared": ["current.state"], "note": "history.events is omitted from the manifest, i.e. unsupported"},
+      "assets": [{"asset_code": "CAM-O2", "external_id": "EXT-CAM-O2", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "NOT_APPLICABLE_CAPABILITY_UNSUPPORTED", "covered_from_utc": null, "covered_to_utc": null, "data_as_of": null},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": []
+    },
+    {
+      "scenario_id": "S-O3-COMPLETE-ZERO-RESULT",
+      "adr_golden_ids": ["G-COMP-03"],
+      "tool": "devices.offline_frequency",
+      "status": "BLOCKED_BY_CONNECTOR",
+      "dependencies": ["CONNECTOR_NO_COMPLETION_STATUS", "RESULT_STATUS_ENUM_PROPOSED", "LOOKBACK_HORIZON_OPEN_QUESTION_D"],
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-CCTV-O3", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-O3", "external_id": "EXT-CAM-O3", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T22:00:00Z", "covered_to_utc": "2026-11-02T22:00:00Z", "data_as_of": "2026-11-02T22:00:00Z"},
+      "connector_retrieval": {
+        "fixture_only_field_names": true,
+        "capability": "history.events",
+        "pages": [
+          {"page": 1, "status": "OK", "next_cursor_present": false, "event_ids": []}
+        ],
+        "completion_status": "COMPLETE",
+        "end_of_dataset_guaranteed_by_connector_contract": true
+      },
+      "raw_vendor_events": [],
+      "core_ingestion_batches": []
+    },
+    {
+      "scenario_id": "S-P1-TIMEZONE-MISSING",
+      "adr_golden_ids": ["G-TZ-01"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["TIMEZONE_COLUMN_BEHAVIOUR_UNVERIFIED", "ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-NOTZ", "timezone": null, "timezone_note": "timezone NULL. The alert engine's compatibility defaults, UTC and the server timezone must NOT be used."},
+      "source": {"source_code": "SRC-CCTV-P1", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-P1", "external_id": "EXT-CAM-P1", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-P1", "batch_id": "B-P1-001", "events": [
+          {"source": "SRC-CCTV-P1", "source_event_id": "EV-P1-001", "asset_code": "CAM-P1", "event_type": "camera_offline", "observed_at": "2026-11-02T10:00:00Z"},
+          {"source": "SRC-CCTV-P1", "source_event_id": "EV-P1-002", "asset_code": "CAM-P1", "event_type": "camera_online", "observed_at": "2026-11-02T10:10:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-P2-TIMEZONE-INVALID",
+      "adr_golden_ids": ["G-TZ-01"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["TIMEZONE_COLUMN_BEHAVIOUR_UNVERIFIED", "ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-BADTZ", "timezone": "Fixture/Not_A_Zone", "timezone_note": "deliberately not an IANA zone name"},
+      "source": {"source_code": "SRC-CCTV-P2", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-P2", "external_id": "EXT-CAM-P2", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-P2", "batch_id": "B-P2-001", "events": [
+          {"source": "SRC-CCTV-P2", "source_event_id": "EV-P2-001", "asset_code": "CAM-P2", "event_type": "camera_offline", "observed_at": "2026-11-02T10:00:00Z"},
+          {"source": "SRC-CCTV-P2", "source_event_id": "EV-P2-002", "asset_code": "CAM-P2", "event_type": "camera_online", "observed_at": "2026-11-02T10:10:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-Q1-TIMESTAMP-WITHOUT-OFFSET",
+      "adr_golden_ids": ["G-TZ-02"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["VALIDATION_ERROR_SHAPE_UNDEFINED", "ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED"],
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-CCTV-Q1", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-Q1", "external_id": "EXT-CAM-Q1", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02T00:00:00", "end": "2026-11-03T00:00:00", "systems": ["CCTV"], "source": null, "note": "local date-times with neither a zone nor a UTC offset"},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-Q1", "batch_id": "B-Q1-001", "events": [
+          {"source": "SRC-CCTV-Q1", "source_event_id": "EV-Q1-001", "asset_code": "CAM-Q1", "event_type": "camera_offline", "observed_at": "2026-11-02T10:00:00Z"},
+          {"source": "SRC-CCTV-Q1", "source_event_id": "EV-Q1-002", "asset_code": "CAM-Q1", "event_type": "camera_online", "observed_at": "2026-11-02T10:10:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-Q2-TIMESTAMP-WITH-OFFSET",
+      "adr_golden_ids": ["G-PER-01"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "fixture timezone; assumed UTC+02:00"},
+      "source": {"source_code": "SRC-CCTV-Q2", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-Q2", "external_id": "EXT-CAM-Q2", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-02T00:00:00+02:00", "end": "2026-11-03T00:00:00+02:00", "systems": ["CCTV"], "source": null, "note": "complete ISO 8601 timestamps with an explicit offset; used as [start, end)"},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-Q2", "batch_id": "B-Q2-001", "events": [
+          {"source": "SRC-CCTV-Q2", "source_event_id": "EV-Q2-001", "asset_code": "CAM-Q2", "event_type": "camera_offline", "observed_at": "2026-11-01T22:00:00Z"},
+          {"source": "SRC-CCTV-Q2", "source_event_id": "EV-Q2-002", "asset_code": "CAM-Q2", "event_type": "camera_online", "observed_at": "2026-11-01T22:10:00Z"},
+          {"source": "SRC-CCTV-Q2", "source_event_id": "EV-Q2-003", "asset_code": "CAM-Q2", "event_type": "camera_offline", "observed_at": "2026-11-02T22:00:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-R-TRUNCATION",
+      "adr_golden_ids": [],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["RESULT_LIMIT_PARAMETER_UNDEFINED", "TOTAL_ROWS_SEMANTICS_ASSUMED", "ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "RESULT_STATUS_ENUM_PROPOSED"],
+      "reuses_data_of": "S-M-RANKING-TIES",
+      "reuse_note": "Buildings, sources, assets and all Core batches are identical to S-M-RANKING-TIES (EV-M-01..EV-M-12) and must be loaded from that scenario; they are not repeated here. Only the request differs.",
+      "building": {"building_code": "BLD-ALPHA and BLD-BRAVO", "timezone": "Africa/Cairo", "timezone_note": "same as S-M-RANKING-TIES"},
+      "source": {"source_code": "SRC-M-1 / SRC-M-2", "capabilities_declared": ["history.events"]},
+      "assets": [],
+      "request": {"start": "2026-11-02", "end": "2026-11-02", "systems": ["CCTV", "NETWORKING"], "source": null, "fixture_only_max_rows": 3, "fixture_only_note": "max_rows is a test parameter standing in for the unspecified result limit; its value 3 is not a system threshold"},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-11-01T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": []
+    },
+    {
+      "scenario_id": "S-T1-DST-MIDNIGHT-MISSING",
+      "adr_golden_ids": ["G-PER-03"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["FIXTURE_TIMEZONE_RULES_UNVERIFIED_AGAINST_TZDATA", "ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-DST-MISSING-MIDNIGHT", "timezone": "America/Havana", "timezone_note": "TEST-ONLY fixture timezone, not a production default. Chosen because its DST change happens at local midnight. Rules recalled by hand, not verified: DST starts on the second Sunday of March at 00:00 CST (-05:00), when clocks jump to 01:00 CDT (-04:00); 2026-03-08 is that Sunday, so local 00:00 on 2026-03-08 does not exist."},
+      "source": {"source_code": "SRC-CCTV-T1", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-T1", "external_id": "EXT-CAM-T1", "system_type": "CCTV"}],
+      "request": {"start": "2026-03-08", "end": "2026-03-08", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-03-07T00:00:00Z", "covered_to_utc": "2026-03-10T00:00:00Z", "data_as_of": "2026-03-10T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-T1", "batch_id": "B-T1-001", "events": [
+          {"source": "SRC-CCTV-T1", "source_event_id": "EV-T1-001", "asset_code": "CAM-T1", "event_type": "camera_offline", "observed_at": "2026-03-08T04:00:00Z"},
+          {"source": "SRC-CCTV-T1", "source_event_id": "EV-T1-002", "asset_code": "CAM-T1", "event_type": "camera_online", "observed_at": "2026-03-08T06:00:00Z"},
+          {"source": "SRC-CCTV-T1", "source_event_id": "EV-T1-003", "asset_code": "CAM-T1", "event_type": "camera_offline", "observed_at": "2026-03-09T03:30:00Z"},
+          {"source": "SRC-CCTV-T1", "source_event_id": "EV-T1-004", "asset_code": "CAM-T1", "event_type": "camera_online", "observed_at": "2026-03-09T05:00:00Z"}
+        ]}
+      ]
+    },
+    {
+      "scenario_id": "S-T2-DST-MIDNIGHT-REPEATED",
+      "adr_golden_ids": ["G-PER-03"],
+      "tool": "devices.offline_frequency",
+      "status": "PROTOTYPE_REPLAY_VERIFIED",
+      "dependencies": ["ASSET_SYSTEM_COMPATIBILITY_UNVERIFIED", "LOOKBACK_HORIZON_OPEN_QUESTION_D", "RESULT_STATUS_ENUM_PROPOSED"],
+      "building": {"building_code": "BLD-DST-REPEATED-MIDNIGHT", "timezone": "America/Havana", "timezone_note": "TEST-ONLY fixture timezone, not a production default. Verified against IANA tzdb 2026f and Microsoft's interim Cuba DST guidance: the scheduled November 1, 2026 fallback was canceled; Cuba remains UTC-04 through November 7, 2027. Local midnight on 2026-11-01 occurs once at 04:00Z; the next midnight is 2026-11-02T04:00:00Z, so this date-based period is 24 hours."},
+      "source": {"source_code": "SRC-CCTV-T2", "capabilities_declared": ["history.events"]},
+      "assets": [{"asset_code": "CAM-T2", "external_id": "EXT-CAM-T2", "system_type": "CCTV"}],
+      "request": {"start": "2026-11-01", "end": "2026-11-01", "systems": ["CCTV"], "source": null},
+      "source_coverage": {"status": "FIXTURE_ASSERTED_COMPLETE", "covered_from_utc": "2026-10-31T00:00:00Z", "covered_to_utc": "2026-11-03T00:00:00Z", "data_as_of": "2026-11-03T00:00:00Z"},
+      "raw_vendor_events": [],
+      "core_ingestion_batches": [
+        {"source": "SRC-CCTV-T2", "batch_id": "B-T2-001", "events": [
+          {"source": "SRC-CCTV-T2", "source_event_id": "EV-T2-001", "asset_code": "CAM-T2", "event_type": "camera_offline", "observed_at": "2026-11-01T04:30:00Z"},
+          {"source": "SRC-CCTV-T2", "source_event_id": "EV-T2-002", "asset_code": "CAM-T2", "event_type": "camera_online", "observed_at": "2026-11-01T05:30:00Z"},
+          {"source": "SRC-CCTV-T2", "source_event_id": "EV-T2-003", "asset_code": "CAM-T2", "event_type": "camera_offline", "observed_at": "2026-11-02T04:30:00Z"},
+          {"source": "SRC-CCTV-T2", "source_event_id": "EV-T2-004", "asset_code": "CAM-T2", "event_type": "camera_online", "observed_at": "2026-11-02T06:00:00Z"}
+        ]}
+      ]
+    }
+  ]
+}
