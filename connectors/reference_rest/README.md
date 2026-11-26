@@ -1,0 +1,29 @@
+# Reference REST source and connector
+
+The connector validates its manifest using the common contracts in [`connectors/sdk`](../sdk/README.md). This is a synthetic example of the shared interface, not a claim that other vendors already work with it.
+
+This package is a synthetic upstream service and an independent read connector. The service runs as its own process/container, exposes bearer-authenticated paginated event history, and reads only the local synthetic fixture. The connector manifest declares only `history.events`; it does not claim telemetry, current-state, live-event, identity, schedule, or recording-health capabilities. The connector translates supported source events to ingestion contract 1.0 and posts them to Core; it has no database access.
+
+## Reference API
+
+Run `python -m connectors.reference_rest.server` with `REFERENCE_API_TOKEN` set. It listens on `127.0.0.1:18111` by default. `GET /v1/events?from=<UTC>&to=<UTC>&limit=100&cursor=0` returns a page and an opaque-to-client cursor. The range is start-inclusive and end-exclusive. `GET /health` is a process liveness check; it does not expose source data.
+
+Build the separate service with `docker build -f connectors/reference_rest/Dockerfile -t anzma-reference-rest .`. Set `REFERENCE_API_BIND=0.0.0.0` only when a container network needs access, and provide a strong `REFERENCE_API_TOKEN` through the runtime environment/secret store.
+
+## Guided connection preview
+
+The Core serves a first-step setup preview at `/setup`. It offers only this synthetic connector, collects an endpoint origin and bearer token, and calls `POST /api/v1/connectors/test-connection`. The check reads a bounded empty historical window to verify authentication and `history.events` access; it does not create a source, save credentials, discover assets, or import data. The endpoint must be explicitly allowed by the Core operator using `ANZMA_CONNECTOR_ALLOWED_ORIGINS`, a comma-separated list of exact origins (for example `https://reference.example:9443`). HTTP origins require a second explicit opt-in via `ANZMA_CONNECTOR_ALLOW_HTTP_ORIGINS`; use this only for an isolated development network. Redirects are rejected so credentials cannot be forwarded to a different origin. Both settings are passed to the API service in Compose. The API route uses the existing Core bearer/session authentication.
+
+This preview is not a qualified vendor connector, support tier, or completed self-service setup. It currently tests only the reference connector and does not persist its credentials or source configuration. Production qualification still requires a named vendor/version, approved auth and deployment model, role-scoped setup permissions, and connection/security/recovery evidence.
+
+## Connector run
+
+Run `python -m connectors.reference_rest.connector` with `REFERENCE_API_URL`, `REFERENCE_API_TOKEN`, `ANZMA_CORE_URL`, `ANZMA_CORE_API_KEY`, `ANZMA_SOURCE_CODE`, `ANZMA_BUILDING_CODE`, `ANZMA_FROM_UTC`, and `ANZMA_TO_UTC`. The Core source key must have event-ingest scope, and each upstream external asset ID must already be mapped to the intended Core asset for that source. The connector uses bounded retries for 429/5xx and network failures, caps page count, rejects cursor loops, and requires every page to explicitly declare completeness.
+
+The runner stores sync progress and its exact pending Core batch in a local SQLite file. `ANZMA_CONNECTOR_STATE_PATH` selects the file (default `./state/reference-rest.sqlite3`; the reference container image sets `/var/lib/anzma-connector/reference-rest.sqlite3`). Mount a persistent, access-controlled volume at that path for container use. Do not put source/Core credentials in the checkpoint database. A page cursor advances only after Core confirms full acceptance. If the response is lost after Core commits, the runner resends the exact saved batch ID and payload so Core's idempotency check can return the recorded outcome. Re-running an already completed source/building/time range is a no-op; use a new end time or range for a new sync. If a sync is incomplete, the next run restarts that same range from its beginning and relies on idempotent event IDs. Each accepted ingestion batch records the page's `upstream_page_complete` and `upstream_has_next_page` values in Core's connector diagnostics; the overall range result is `INCOMPLETE` if any page reported incomplete.
+
+Run one connector process per state file at a time; a local file lock prevents two runners from advancing it concurrently. The source cursor must remain valid across connector restarts for the same time range. The reference fixture's offset cursor does; a real adapter must verify vendor cursor lifetime/stability or implement a vendor-specific safe restart strategy before qualification. The SQLite state file is local runner state, not a Core checkpoint service or multi-host coordination mechanism.
+
+`DOOR_OPENED`, `ACCESS_GRANTED`, `OFFLINE_START`, and `OFFLINE_END` are mapped to their canonical event types. `ACCESS_GRANTED` remains a distinct record and is never counted as proof that a door physically opened. Unknown event types fail the sync rather than silently producing partial history. `OFFLINE_START/END` must be explicit upstream transitions; no state is inferred from silence. The fixture contains synthetic records only.
+
+The Core needs migration `014_operational_analysis_events.sql` applied through the existing migration runner before these event types can be ingested. The typed analytics endpoint is `POST /api/v1/analytics/execute`; recognized chat questions route to the same deterministic analyses. Analysis result snapshots are not persisted yet, and coverage remains `UNKNOWN` because connector sync completeness is not retained in Core. The local sync status is reported by the runner only; Core does not yet persist or expose end-to-end source coverage.

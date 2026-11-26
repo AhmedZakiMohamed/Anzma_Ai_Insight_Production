@@ -231,6 +231,10 @@ The v1 ingestion contract, response semantics, API-key lifecycle, and provisioni
 | [`deploy/compose/`](deploy/compose/) | Docker image and Compose services. |
 | [`docs/`](docs/) | Run guide, data model, architecture, and project history. |
 
+## Product direction and architecture
+
+The CEO-confirmed product references and the broader target architecture are preserved in [`docs/product_reference/`](docs/product_reference/README.md). Start with the [executive architecture review](docs/CEO_ARCHITECTURE_REVIEW_BRIEF.md) for launch choices. Use [`docs/PROJECT_CHARTER.md`](docs/PROJECT_CHARTER.md) for the project north star, [`docs/WHOLE_SOLUTION_ARCHITECTURE.md`](docs/WHOLE_SOLUTION_ARCHITECTURE.md) for the proposed end-to-end solution, [`docs/DELIVERY_ROADMAP.md`](docs/DELIVERY_ROADMAP.md) for customer-gate sequencing, [`docs/G0_REPOSITORY_BASELINE.md`](docs/G0_REPOSITORY_BASELINE.md) for current source/worktree status, [`docs/BUSINESS_OUTCOMES_AND_SUCCESS_MEASURES.md`](docs/BUSINESS_OUTCOMES_AND_SUCCESS_MEASURES.md) for pilot success measurement, and [`docs/PRODUCT_REQUIREMENTS_TRACEABILITY.md`](docs/PRODUCT_REQUIREMENTS_TRACEABILITY.md) to compare that target with current implementation evidence. The [G1 working-slice static review](docs/v02/G1_STATIC_REVIEW.md) records implementation gaps and explicitly distinguishes source inspection from test evidence. The target documents describe intended product capabilities; they are not claims that the current simulated-data demo already delivers them.
+
 ## Project status and limitations
 
 - The default dataset is synthetic and is loaded only when PostgreSQL initializes an empty volume.

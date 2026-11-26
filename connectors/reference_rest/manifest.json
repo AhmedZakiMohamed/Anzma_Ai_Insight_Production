@@ -1,0 +1,12 @@
+{
+  "id": "anzma.reference-rest",
+  "version": "0.1.0",
+  "api_contract": "connector-manifest/1.0",
+  "vendor": "synthetic-reference",
+  "supported_domains": ["access_control", "device_operations"],
+  "capabilities": ["history.events"],
+  "authentication_modes": ["bearer"],
+  "pagination_style": "cursor",
+  "freshness_model": "historical_poll",
+  "minimum_core_version": "0.1.0"
+}

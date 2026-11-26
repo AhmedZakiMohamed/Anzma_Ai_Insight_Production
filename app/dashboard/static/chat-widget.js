@@ -168,6 +168,30 @@
       h("div", { class: "cw-bubble", dir: "auto", text }));
   }
 
+  function resultTable(result, dir) {
+    if (!result || !Array.isArray(result.columns) || !Array.isArray(result.rows)) return null;
+    const columns = result.columns.filter(c => c && typeof c.key === "string");
+    if (!columns.length) return null;
+    const table = h("table", { class: "cw-result-table", dir });
+    const caption = h("caption", { text: `${result.tool || "Analysis result"} · ${result.total_rows ?? result.rows.length} rows` });
+    const thead = h("thead", {}, h("tr", {}, columns.map(c => h("th", { scope: "col", text: c.key }))));
+    const tbody = h("tbody");
+    result.rows.forEach(row => {
+      const cells = columns.map(column => {
+        const value = row && row[column.key];
+        const text = Array.isArray(value)
+          ? value.map(item => item && (item.source_event_id || item.event_id) || "").filter(Boolean).join(", ")
+          : value == null ? "" : (typeof value === "object" ? JSON.stringify(value) : String(value));
+        return h("td", { text, title: text });
+      });
+      tbody.appendChild(h("tr", {}, cells));
+    });
+    table.append(caption, thead, tbody);
+    const section = h("div", { class: "cw-result-wrap", role: "region", "aria-label": "Structured analysis result", tabindex: "0" }, table);
+    if (result.truncated) section.appendChild(h("p", { class: "cw-result-note", text: "Showing a partial result. See the limitations below." }));
+    return section;
+  }
+
   function botNode(d) {
     const lang = d.language === "ar" ? "ar" : "en";
     const dir = lang === "ar" ? "rtl" : "ltr";
@@ -178,6 +202,8 @@
     renderAnswer(bubble, d.answer, refs);
 
     const wrap = h("div", { class: "cw-msg cw-bot" }, bubble);
+    const result = resultTable(d.result, dir);
+    if (result) wrap.appendChild(result);
 
     // trust indicators
     const g = d.grounding || {};

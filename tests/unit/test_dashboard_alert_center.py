@@ -73,6 +73,39 @@ class DashboardAlertCenterTests(unittest.TestCase):
         self.assertNotIn("? data.items : []", loader)
         self.assertIn("AC.loadError = true", loader)
 
+    def test_socket_reconnect_backfills_by_alert_id_without_replaying_live_side_effects(self):
+        start = HTML.index("    async function backfillAlerts() {")
+        end = HTML.index("    /* =========================================================", start)
+        backfill = HTML[start:end]
+        self.assertIn("/api/v1/alerts/stream?after_id=", backfill)
+        self.assertIn("onNewAlert(alert, false)", backfill)
+        self.assertIn("data.next_after_id", backfill)
+        self.assertIn("data.has_more", backfill)
+        connect_start = HTML.index('alertSocket.on("connect", () => {')
+        connect_end = HTML.index('alertSocket.on("disconnect"', connect_start)
+        self.assertIn("void backfillAlerts()", HTML[connect_start:connect_end])
+
+    def test_initial_cursor_is_global_and_socket_alerts_advance_it(self):
+        self.assertIn("/api/v1/alerts/stream/latest", HTML)
+        self.assertIn("AC.lastAlertId = Math.max(AC.lastAlertId, alertId)", HTML)
+        self.assertIn("AC.cursorInitialized", HTML)
+
+    def test_alert_replay_does_not_advance_from_visible_rows_when_watermark_fails(self):
+        live_start = HTML.index("    function onNewAlert(alert, isLive = true) {")
+        live_end = HTML.index("    /* =========================================================", live_start)
+        live_handler = HTML[live_start:live_end]
+        load_start = HTML.index("    async function loadInitialAlerts() {")
+        load_end = HTML.index("    async function backfillAlerts() {", load_start)
+        loader = HTML[load_start:load_end]
+        backfill_start = load_end
+        backfill_end = HTML.index("    function setAlertStatus", backfill_start)
+        backfill = HTML[backfill_start:backfill_end]
+
+        self.assertIn("if (AC.cursorInitialized) AC.lastAlertId = Math.max(AC.lastAlertId, alertId)", live_handler)
+        self.assertNotIn("AC.cursorInitialized = true", loader)
+        self.assertNotIn("AC.lastAlertId = Math.max(AC.lastAlertId, ...loadedIds)", loader)
+        self.assertIn("throw new Error(\"Cannot replay alerts until the global cursor is available.\")", backfill)
+
     def test_incident_list_remains_filtered_by_system_and_selected_window(self):
         start = HTML.index("    function incMatches(i) {")
         end = HTML.index("    function renderIncidentList()", start)

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Connect a system · Anzma AI Insight</title>
+  <style>
+    :root{font-family:Inter,Segoe UI,Arial,sans-serif;color:#14213d;background:#f5f7fc}*{box-sizing:border-box}
+    body{margin:0}.wrap{max-width:900px;margin:0 auto;padding:32px 20px 60px}.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px}
+    .brand{font-size:19px;font-weight:750}.badge{font-size:12px;color:#5748c8;background:#eceaff;padding:7px 10px;border-radius:20px}
+    h1{font-size:32px;margin:0 0 8px}.intro{color:#526078;margin:0 0 26px;line-height:1.55}.steps{display:flex;gap:10px;margin:0 0 24px;color:#63708a;font-size:13px}.steps span{padding:9px 12px;background:white;border-radius:9px;border:1px solid #e1e6f0}.steps .active{color:#4338ca;border-color:#a8a1fa;background:#f0efff}
+    .card{background:white;border:1px solid #e1e6f0;border-radius:15px;padding:24px;box-shadow:0 8px 28px #24335a0a}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.field{display:flex;flex-direction:column;gap:7px;margin-bottom:17px}label{font-weight:650;font-size:14px}input,select{font:inherit;padding:12px;border:1px solid #ccd3e1;border-radius:8px;color:#17233e;background:white}input:focus,select:focus{outline:2px solid #b6b0ff;border-color:#7266ed}.hint{font-size:12px;line-height:1.45;color:#68758b}.notice{background:#f5f4ff;border-left:4px solid #7367ef;padding:13px 15px;border-radius:7px;color:#454363;font-size:13px;line-height:1.5;margin:4px 0 20px}.actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap}button{background:#3d50d9;color:#fff;border:0;border-radius:8px;padding:12px 18px;font-weight:700;font-size:14px;cursor:pointer}button:disabled{opacity:.6;cursor:wait}.result{display:none;margin-top:20px;padding:16px;border-radius:9px;line-height:1.5}.result.ok{display:block;background:#e9f8ef;color:#17683a}.result.fail{display:block;background:#fff1ee;color:#913320}.result ul{margin:9px 0 0;padding-left:20px}.foot{color:#737f92;font-size:12px;margin-top:18px}@media(max-width:650px){.grid{grid-template-columns:1fr}h1{font-size:26px}.steps{flex-wrap:wrap}}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="top"><div class="brand">Anzma AI Insight</div><span class="badge">G1 · Guided connection preview</span></header>
+    <h1>Connect an existing system</h1>
+    <p class="intro">Choose a supported connector, provide a read-only endpoint credential, and test access before setup continues.</p>
+    <nav class="steps" aria-label="Setup progress"><span class="active">1 · Choose connector</span><span class="active">2 · Enter connection</span><span>3 · Verify &amp; prepare</span><span>4 · Finish</span></nav>
+    <section class="card" aria-labelledby="form-title">
+      <h2 id="form-title" style="margin:0 0 20px;font-size:20px">Connection details</h2>
+      <form id="connect-form">
+        <div class="grid">
+          <div class="field"><label for="connector">System connector</label><select id="connector" name="connector"><option value="anzma.reference-rest">Reference REST (synthetic)</option></select><span class="hint">This is the only connector available in this preview. No BMS, access-control, VMS, or IoT vendor is qualified yet.</span></div>
+          <div class="field"><label for="tier">Support status</label><input id="tier" value="Engineering reference · not certified" readonly><span class="hint">A support tier will be shown only after a named vendor and version pass qualification.</span></div>
+        </div>
+        <div class="field"><label for="endpoint">Endpoint origin</label><input id="endpoint" name="endpoint" type="url" placeholder="https://building-system.example" required autocomplete="url"><span class="hint">The operator must approve this exact origin in the Core deployment configuration. Redirects are not followed.</span></div>
+        <div class="field"><label for="token">Read-only bearer credential</label><input id="token" name="token" type="password" required autocomplete="off" maxlength="4096"><span class="hint">Used only for this connection check, not saved by this preview. Use a read-only source account.</span></div>
+        <div class="notice">This check reads a small, empty historical window to verify endpoint access, authentication, and event-history permission. It does not import data or change the source system.</div>
+        <div class="actions"><button id="submit" type="submit">Test connection</button><span class="hint">Credentials are sent to the authenticated Anzma Core over this page's origin and cleared after the check.</span></div>
+        <div id="result" class="result" role="status" aria-live="polite"></div>
+      </form>
+      <p class="foot">Successful connection testing is only the first setup step. Discovery, mapping approval, initial sync, and real-vendor qualification are not part of this preview.</p>
+    </section>
+  </main>
+  <script src="/static/auth.js"></script>
+  <script>
+    (()=>{const form=document.getElementById('connect-form');const button=document.getElementById('submit');const result=document.getElementById('result');
+      form.addEventListener('submit',async event=>{event.preventDefault();button.disabled=true;button.textContent='Testing…';result.className='result';result.textContent='Checking approved endpoint…';result.style.display='block';
+        try{const response=await fetch('/api/v1/connectors/test-connection',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({connector_id:document.getElementById('connector').value,endpoint_url:document.getElementById('endpoint').value.trim(),bearer_token:document.getElementById('token').value})});
+          const data=await response.json();if(!response.ok){const detail=data.detail||{};throw new Error(detail.message||'Connection check could not be completed.');}
+          if(data.ok){result.className='result ok';result.textContent=`Connection verified · ${data.latency_ms} ms · ${data.checked_at}`;const list=document.createElement('ul');for(const capability of data.capabilities){const item=document.createElement('li');item.textContent=capability;list.appendChild(item);}result.appendChild(list);}
+          else{result.className='result fail';result.textContent=`Connection not verified (${data.error_code||'CONNECTION_FAILED'}). ${data.message||'Check the endpoint, credential, and read permissions.'}`;}
+        }catch(error){result.className='result fail';result.textContent=error.message||'Could not reach the setup service.';}
+        finally{document.getElementById('token').value='';button.disabled=false;button.textContent='Test connection';}
+      });})();
+  </script>
+</body>
+</html>

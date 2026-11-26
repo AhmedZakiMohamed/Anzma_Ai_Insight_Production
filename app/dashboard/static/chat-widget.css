@@ -153,6 +153,15 @@
 .cw-ev li.cw-hl { background: color-mix(in srgb, var(--cw-accent) 16%, var(--cw-bg)); }
 .cw-notes { margin: 6px 0 0; color: var(--cw-muted); font-size: 11.5px; }
 
+/* Structured analytical result returned with the chat answer. */
+.cw-result-wrap { max-width: 100%; margin-top: 7px; overflow: auto; border: 1px solid var(--cw-line); border-radius: 7px; }
+.cw-result-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.cw-result-table caption { padding: 6px 8px; text-align: start; font-weight: 600; color: var(--cw-muted); }
+.cw-result-table th, .cw-result-table td { padding: 5px 7px; border-top: 1px solid var(--cw-line); text-align: start; vertical-align: top; overflow-wrap: anywhere; }
+.cw-result-table th { position: sticky; top: 0; background: var(--cw-bg); }
+.cw-result-table td { max-width: 240px; }
+.cw-result-note { margin: 0; padding: 5px 8px; color: var(--cw-warn); font-size: 11px; }
+
 /* typing indicator */
 .cw-typing .cw-bubble { display: flex; align-items: center; gap: 4px; }
 .cw-typing i {

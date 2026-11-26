@@ -257,6 +257,7 @@
       <select id="buildingFilter" aria-label="Building filter">
         <option value="">All buildings</option>
       </select>
+      <a href="/setup" style="align-self:center;padding:9px 12px;border:1px solid var(--line,#d0d5dd);border-radius:8px;color:inherit;text-decoration:none">Connect a system</a>
       <div class="seg" id="sysFilter" role="group" aria-label="System filter"></div>
       <div class="seg" id="hoursFilter" role="group" aria-label="Time window"></div>
       <button id="refresh" type="button">Refresh</button>
@@ -1138,6 +1139,10 @@
       max: 200,
       sysById: new Map(),
       loadError: false,
+      lastAlertId: 0,
+      cursorInitialized: false,
+      backfillPromise: null,
+      backfillRetryMs: 1000,
 
       filters: {
         severity: "",
@@ -1478,18 +1483,24 @@
        16. Handle New Real-Time Alerts
     ========================================================= */
 
-    function onNewAlert(alert) {
+    function onNewAlert(alert, isLive = true) {
 
       if (
         !alert ||
-        alert.id == null ||
-        AC.seen.has(alert.id)
+        alert.id == null
       ) {
         return;
       }
 
+      const alertId = Number(alert.id);
+      if (!Number.isSafeInteger(alertId) || alertId < 0) return;
+      // Until the global watermark is initialized, showing a live item must not
+      // advance the replay cursor past alerts that have not yet been backfilled.
+      if (AC.cursorInitialized) AC.lastAlertId = Math.max(AC.lastAlertId, alertId);
+      if (AC.seen.has(alert.id)) return;
+
       if (state.building) {
-        void loadInitialAlerts();
+        if (isLive) void loadInitialAlerts();
         return;
       }
 
@@ -1502,7 +1513,7 @@
 
 
       // Mark as fresh
-      alert._fresh = true;
+      alert._fresh = isLive;
 
 
       // Add newest alert at the beginning
@@ -1526,7 +1537,7 @@
 
 
       // Remove fresh highlight after 6 seconds
-      setTimeout(() => {
+      if (isLive) setTimeout(() => {
 
         alert._fresh = false;
 
@@ -1536,7 +1547,7 @@
 
 
       // Sound and toast only if alert matches filters
-      if (passes(alert)) {
+      if (isLive && passes(alert)) {
 
         beep(alert.severity);
 
@@ -1560,9 +1571,28 @@
        17. Load Existing Alerts
     ========================================================= */
 
+    async function initializeAlertCursor() {
+      if (AC.cursorInitialized) return true;
+      try {
+        const response = await fetch("/api/v1/alerts/stream/latest");
+        if (!response.ok) throw new Error(`Alert cursor API: HTTP ${response.status}`);
+        const data = await response.json();
+        const latestId = Number(data && data.latest_event_id);
+        if (!Number.isSafeInteger(latestId) || latestId < 0) throw new Error("Alert cursor API returned an invalid ID.");
+        AC.lastAlertId = Math.max(AC.lastAlertId, latestId);
+        AC.cursorInitialized = true;
+        return true;
+      } catch (error) {
+        console.error("Could not initialize alert replay cursor:", error);
+        return false;
+      }
+    }
+
     async function loadInitialAlerts() {
 
       try {
+
+        await initializeAlertCursor();
 
         const response = await fetch(apiPath("/alerts?limit=200"));
 
@@ -1579,7 +1609,6 @@
           throw new Error("Alerts API response does not contain an items array.");
         }
         const items = data.items;
-
 
         // Sort newest first
         items.sort((a, b) => {
@@ -1623,6 +1652,62 @@
         );
 
       }
+    }
+
+
+    async function backfillAlerts() {
+      if (AC.backfillPromise) return AC.backfillPromise;
+      if (alertSocket && alertSocket.connected) setAlertStatus("syncing", true);
+      AC.backfillPromise = (async () => {
+        if (!await initializeAlertCursor()) {
+          throw new Error("Cannot replay alerts until the global cursor is available.");
+        }
+        let afterId = AC.lastAlertId;
+        let hasMore = false;
+        let pages = 0;
+        do {
+          const response = await fetch(`/api/v1/alerts/stream?after_id=${encodeURIComponent(afterId)}&limit=500`);
+          if (!response.ok) throw new Error(`Alert replay API: HTTP ${response.status}`);
+          const data = await response.json();
+          if (!data || !Array.isArray(data.items) || typeof data.has_more !== "boolean") {
+            throw new Error("Alert replay API returned an invalid page.");
+          }
+          for (const alert of data.items) onNewAlert(alert, false);
+          const nextId = Number(data.next_after_id);
+          if (!Number.isSafeInteger(nextId) || nextId < afterId || (data.items.length && nextId === afterId)) {
+            throw new Error("Alert replay cursor did not advance.");
+          }
+          afterId = Math.max(nextId, AC.lastAlertId);
+          AC.lastAlertId = afterId;
+          hasMore = data.has_more;
+          if (hasMore && data.items.length === 0) throw new Error("Alert replay reported more data without returning alerts.");
+          pages += 1;
+        } while (hasMore && pages < 20);
+
+        if (state.building && pages) await loadInitialAlerts();
+        AC.backfillRetryMs = 1000;
+        if (hasMore) window.setTimeout(() => { void backfillAlerts(); }, 0);
+        else if (alertSocket && alertSocket.connected) setAlertStatus("live", true);
+      })().catch(error => {
+        console.error("Failed to replay missed alerts:", error);
+        setAlertStatus("sync error", false);
+        if (alertSocket && alertSocket.connected) {
+          const retryIn = AC.backfillRetryMs;
+          AC.backfillRetryMs = Math.min(AC.backfillRetryMs * 2, 30000);
+          window.setTimeout(() => { void backfillAlerts(); }, retryIn);
+        }
+      }).finally(() => {
+        AC.backfillPromise = null;
+      });
+      return AC.backfillPromise;
+    }
+
+
+    function setAlertStatus(label, connected) {
+      const conn = $("acConn");
+      if (!conn) return;
+      conn.textContent = label;
+      conn.className = "ac-conn " + (connected ? "on" : "off");
     }
 
 
@@ -1673,19 +1758,7 @@
       });
 
 
-      const conn = $("acConn");
-
-
-      const setConn = connected => {
-
-        conn.textContent =
-          connected ? "live" : "offline";
-
-        conn.className =
-          "ac-conn " +
-          (connected ? "on" : "off");
-
-      };
+      const setConn = connected => setAlertStatus(connected ? "live" : "offline", connected);
 
 
       alertSocket.on("connect", () => {
@@ -1696,6 +1769,7 @@
         );
 
         setConn(true);
+        void backfillAlerts();
 
       });
 

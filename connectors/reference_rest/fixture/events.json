@@ -1,0 +1,10 @@
+[
+  {"id":"evt-door-001","asset_external_id":"door-north-01","event_type":"DOOR_OPENED","observed_at":"2026-11-02T18:15:00Z","severity":"INFO","details":{"origin":"synthetic_reference","door_contact":"open"}},
+  {"id":"evt-door-002","asset_external_id":"door-north-01","event_type":"ACCESS_GRANTED","observed_at":"2026-11-02T18:21:00Z","severity":"INFO","details":{"origin":"synthetic_reference"}},
+  {"id":"evt-door-003","asset_external_id":"door-south-01","event_type":"DOOR_OPENED","observed_at":"2026-11-03T20:30:00Z","severity":"INFO","details":{"origin":"synthetic_reference","door_contact":"open"}},
+  {"id":"evt-offline-001","asset_external_id":"ahu-03","event_type":"OFFLINE_START","observed_at":"2026-11-03T09:00:00Z","severity":"WARNING","details":{"origin":"synthetic_reference"}},
+  {"id":"evt-offline-002","asset_external_id":"ahu-03","event_type":"OFFLINE_START","observed_at":"2026-11-03T09:02:00Z","severity":"WARNING","details":{"origin":"synthetic_reference","alarm":"repeat"}},
+  {"id":"evt-offline-003","asset_external_id":"ahu-03","event_type":"OFFLINE_END","observed_at":"2026-11-03T09:45:00Z","severity":"INFO","details":{"origin":"synthetic_reference"}},
+  {"id":"evt-offline-004","asset_external_id":"switch-02","event_type":"OFFLINE_START","observed_at":"2026-11-04T11:00:00Z","severity":"WARNING","details":{"origin":"synthetic_reference"}},
+  {"id":"evt-offline-005","asset_external_id":"switch-02","event_type":"OFFLINE_END","observed_at":"2026-11-04T11:10:00Z","severity":"INFO","details":{"origin":"synthetic_reference"}}
+]

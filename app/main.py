@@ -41,6 +41,7 @@ from app.domain.incidents import incident_engine as inc
 from app.services import pipeline
 from app.services import ingestion
 from app.services import rate_limit
+from app.api import connector_setup_api
 from app.security import (authenticator, configure_cors, cors_origins_from_env, socket_authenticate,
                           socketio_cors_origins, token_from_authorization)
 
@@ -86,6 +87,11 @@ api.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 @api.get("/dashboard", include_in_schema=False, dependencies=[])
 def dashboard():
     return FileResponse(os.path.join(STATIC_DIR, "dashboard.html"))
+
+
+@api.get("/setup", include_in_schema=False)
+def connector_setup_page():
+    return FileResponse(os.path.join(STATIC_DIR, "setup.html"))
 
 
 def day2_connect(**options):
@@ -336,10 +342,13 @@ def ask(request: AskRequest) -> dict[str, Any]:
 # ======================================================================================================
 # Dashboard page, assistant widget, detection and live alerts
 # ======================================================================================================
-from app.api import chat_lite, frontend_api, freshness_api  # noqa: E402
+from app.api import alert_stream_api, analytics_api, chat_lite, frontend_api, freshness_api  # noqa: E402
 
 api.include_router(frontend_api.create_router())
+api.include_router(connector_setup_api.create_router())
 api.include_router(freshness_api.create_router())
+api.include_router(alert_stream_api.create_router())
+api.include_router(analytics_api.create_router(day2_connect, db_errors=DB_ERRORS))
 api.include_router(chat_lite.create_router(
     day2_connect, pipeline, inc, use_llm_default=os.getenv("CHAT_USE_LLM", "true").lower() == "true",
     db_errors=DB_ERRORS, model_provider=model_provider))

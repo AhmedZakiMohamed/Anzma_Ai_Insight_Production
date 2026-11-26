@@ -224,6 +224,10 @@ The v1 ingestion contract, response semantics, API-key lifecycle, and provisioni
 | [`SIMULATOR_DESIGN.md`](SIMULATOR_DESIGN.md) | Human decision note for the proposed reference simulator connector. |
 | [`FRESHNESS_DESIGN.md`](FRESHNESS_DESIGN.md) | Human decision note for reporting freshness, source liveness, data gaps, and building schedules. |
 
+## Product direction and architecture
+
+The CEO-confirmed product references are preserved in [`product_reference/`](product_reference/README.md). The executive review starting point is [`CEO_ARCHITECTURE_REVIEW_BRIEF.md`](CEO_ARCHITECTURE_REVIEW_BRIEF.md). The project north star is [`PROJECT_CHARTER.md`](PROJECT_CHARTER.md); the proposed end-to-end solution is [`WHOLE_SOLUTION_ARCHITECTURE.md`](WHOLE_SOLUTION_ARCHITECTURE.md); and [`PRODUCT_REQUIREMENTS_TRACEABILITY.md`](PRODUCT_REQUIREMENTS_TRACEABILITY.md) distinguishes current code evidence from future requirements. The [delivery roadmap](DELIVERY_ROADMAP.md) separates CEO customer gates from engineering increments, and [`G0_REPOSITORY_BASELINE.md`](G0_REPOSITORY_BASELINE.md) records the current source/worktree status. Pilot outcomes and attribution are defined in [`BUSINESS_OUTCOMES_AND_SUCCESS_MEASURES.md`](BUSINESS_OUTCOMES_AND_SUCCESS_MEASURES.md). The [static review of the uncommitted G1 slice](v02/G1_STATIC_REVIEW.md) records code-level findings without claiming fresh test evidence. The target documents describe intended capabilities and must not be read as proof that the current simulated-data demo already delivers them. Open business and technical choices are tracked in [`ARCHITECTURE_DECISION_REGISTER.md`](ARCHITECTURE_DECISION_REGISTER.md); analytic prerequisites and status are in [`ANALYTICS_CAPABILITY_CATALOG.md`](ANALYTICS_CAPABILITY_CATALOG.md); and the pilot source/device intake is in [`PILOT_SYSTEM_QUALIFICATION_TEMPLATE.md`](PILOT_SYSTEM_QUALIFICATION_TEMPLATE.md).
+
 ## Project status and limitations
 
 - The default dataset is synthetic and is loaded only when PostgreSQL initializes an empty volume.

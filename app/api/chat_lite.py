@@ -66,6 +66,30 @@ AGENT_TOOLS = [
     },
 ]
 
+# The first universal-platform slice uses only these typed operational tools.
+# Keep this registry separate from the legacy SQL agent: model output selects a
+# calculation and parameters, while the analytics service remains authoritative.
+OPERATIONAL_ANALYTICS_TOOLS = [
+    {
+        "name": "analyze_after_hours_doors",
+        "description": "Count explicit physical door-open events after the user-stated local time, or 20:00 by default.",
+        "parameters": {"type": "object", "properties": {
+            "start_date": {"type": "string", "description": "Inclusive ISO date YYYY-MM-DD"},
+            "end_date": {"type": "string", "description": "Inclusive ISO date YYYY-MM-DD"},
+            "building_code": {"type": "string"},
+        }, "required": ["start_date", "end_date"]},
+    },
+    {
+        "name": "rank_offline_devices",
+        "description": "Rank devices by explicit offline incidents in a date range.",
+        "parameters": {"type": "object", "properties": {
+            "start_date": {"type": "string", "description": "Inclusive ISO date YYYY-MM-DD"},
+            "end_date": {"type": "string", "description": "Inclusive ISO date YYYY-MM-DD"},
+            "building_code": {"type": "string"},
+        }, "required": ["start_date", "end_date"]},
+    },
+]
+
 
 _SCHEMA_TXT = None
 
@@ -538,6 +562,135 @@ def _reply(answer, lang, source, passed, sources=None, sufficient=True, hours=No
     }
 
 
+def _operational_query(cur, text: str, lang: str, *, model_provider=None, use_llm=True):
+    """Route the two G1 questions through bounded tools and deterministic analytics."""
+    from datetime import date, time
+    from collections import Counter
+    from app.services.analytics import operational
+
+    low = text.lower()
+    door_intent = ("door" in low or "doors" in low or "باب" in low or "أبواب" in low) and any(
+        word in low for word in ("open", "opened", "after", "8 pm", "20:00", "مساء", "فتح"))
+    offline_intent = ("offline" in low or "غير متصل" in low or "انقطاع" in low) and any(
+        word in low for word in ("device", "devices", "asset", "assets", "most", "highest", "incident",
+                                 "frequency", "frequent", "أجهزة", "الأجهزة", "أكثر"))
+    if not door_intent and not offline_intent:
+        return None
+    if door_intent and offline_intent:
+        message = ("Please ask about door openings or offline devices separately so I can choose the right analysis."
+                   if lang == "en" else "من فضلك اسأل عن فتح الأبواب أو الأجهزة غير المتصلة كلٌّ على حدة لاختيار التحليل الصحيح.")
+        return _reply(message, lang, "DETERMINISTIC_ANALYTICS", False, sufficient=False)
+
+    date_tokens = re.findall(r"(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)", text)
+    after_local = time(20, 0)
+    if door_intent:
+        normalized_text = text.translate(str.maketrans("٠١٢٣٤٥٦٧٨٩", "0123456789"))
+        clock24 = re.search(r"(?<!\d)([01]?\d|2[0-3]):([0-5]\d)(?!\d)", normalized_text)
+        clock12 = re.search(r"(?i)(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*(am|pm|صباح(?:اً|ا)?|مساء(?:ً|ا)?)", normalized_text)
+        if clock12:
+            hour = int(clock12.group(1)) % 12
+            marker = clock12.group(3).lower()
+            if marker == "pm" or marker.startswith("مساء"):
+                hour += 12
+            after_local = time(hour, int(clock12.group(2) or "0"))
+        elif clock24:
+            after_local = time(int(clock24.group(1)), int(clock24.group(2)))
+        elif re.search(r"(?i)(after|بعد)\s*(1[0-2]|0?[1-9])\b", normalized_text):
+            message = ("Please specify AM or PM for that clock time."
+                       if lang == "en" else "من فضلك حدّد صباحاً أم مساءً لهذا الوقت.")
+            return _reply(message, lang, "DETERMINISTIC_ANALYTICS", False, sufficient=False)
+
+    from_model = False
+    start_date = end_date = None
+    building_code = None
+    if model_provider is not None and use_llm:
+        try:
+            prompt = (
+                "Select exactly one supplied operational analytics tool for the user's request. "
+                "Only use dates explicitly stated as YYYY-MM-DD; do not guess missing dates. "
+                "Use only the supplied arguments that are directly supported by the request. "
+                "Do not write SQL, calculate values, or call any other capability."
+            )
+            reply = model_provider.complete(
+                messages=[{"role": "system", "content": prompt}, {"role": "user", "content": text}],
+                tools=OPERATIONAL_ANALYTICS_TOOLS, keep_alive="30m",
+                options={"temperature": 0, "num_ctx": 4096, "num_predict": 120},
+            )
+            calls = tuple(getattr(reply, "tool_calls", ()) or ())
+            expected_tool = "analyze_after_hours_doors" if door_intent else "rank_offline_devices"
+            if len(calls) == 1 and calls[0].name == expected_tool and isinstance(calls[0].arguments, dict):
+                args = calls[0].arguments
+                allowed = {"start_date", "end_date", "building_code"}
+                if set(args) <= allowed and isinstance(args.get("start_date"), str) and isinstance(args.get("end_date"), str):
+                    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", args["start_date"]) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", args["end_date"]):
+                        raise ValueError("tool dates must use YYYY-MM-DD")
+                    if len(date_tokens) < 2 or args["start_date"] != date_tokens[0] or args["end_date"] != date_tokens[1]:
+                        raise ValueError("tool dates must match the first explicit date range in the user's request")
+                    start_date, end_date = date.fromisoformat(args["start_date"]), date.fromisoformat(args["end_date"])
+                    building_code = args.get("building_code")
+                    if building_code is not None and (not isinstance(building_code, str) or not 1 <= len(building_code) <= 64):
+                        raise ValueError("tool building_code is invalid")
+                    from_model = True
+        except Exception:
+            # The bounded model path is optional; explicit-date deterministic routing remains available.
+            start_date = end_date = None
+            building_code = None
+
+    if not from_model:
+        date_tokens = re.findall(r"(?<!\d)(\d{4}-\d{2}-\d{2})(?!\d)", text)
+        if len(date_tokens) < 2:
+            message = ("Please include a start and end date in YYYY-MM-DD format so I can run this historical analysis."
+                       if lang == "en" else "من فضلك أرسل تاريخ البداية والنهاية بصيغة YYYY-MM-DD لإجراء التحليل التاريخي.")
+            return _reply(message, lang, "DETERMINISTIC_ANALYTICS", False, sufficient=False)
+        try:
+            start_date, end_date = date.fromisoformat(date_tokens[0]), date.fromisoformat(date_tokens[1])
+        except ValueError as exc:
+            return _reply(f"I cannot compute this query: {exc}." if lang == "en" else f"لا يمكنني حساب هذا الاستعلام: {exc}.",
+                          lang, "DETERMINISTIC_ANALYTICS", False, sufficient=False)
+
+    try:
+        if end_date < start_date:
+            raise ValueError("end_date must be on or after start_date")
+        if door_intent:
+            result = operational.doors_after_hours(cur, start_date, end_date,
+                building_code=building_code, after_local=after_local)
+            counts = Counter((row["building_code"], row["asset_code"], row["door"]) for row in result["rows"])
+            summary = "; ".join(f"{building}/{door}: {count}" for (building, _, door), count in sorted(counts.items())) or "no matching stored events"
+            answer = (f"In the Core records currently available, I found {result['total_rows']} explicit door-open events "
+                      f"at or after {after_local.isoformat(timespec='minutes')} local time from {start_date} through {end_date}. {summary}. "
+                      "Upstream history completeness is unverified.")
+            refs = [ev for row in result["rows"] for ev in row["evidence_refs"]]
+        else:
+            result = operational.offline_frequency(cur, start_date, end_date, building_code=building_code)
+            rows = result["rows"]
+            if rows:
+                top = rows[0]["offline_incidents"]
+                leaders = [row for row in rows if row["offline_incidents"] == top]
+                summary = "; ".join(f"{row['device']} ({row['offline_incidents']})" for row in leaders)
+                answer = (f"In the Core records currently available from {start_date} through {end_date}, "
+                          f"the highest explicit offline-incident count is {top}: {summary}. "
+                          "Repeated starts within an outage count once; upstream history completeness is unverified.")
+            else:
+                answer = (f"No explicit offline-start transitions were found in the Core records from {start_date} "
+                          f"through {end_date}. Upstream history completeness is unverified.")
+            refs = [ev for row in rows for ev in row["evidence_refs"]]
+        source_rows = [{"ref": f"E{i + 1}", "text": f"Core event_id={item['event_id']}; source_event_id={item['source_event_id']}; source={item['source_code']}"}
+                       for i, item in enumerate(refs[:50])]
+        if len(result["rows"]) > 200:
+            result["rows"] = result["rows"][:200]
+            result["truncated"] = True
+            result["limitations"].append("Chat response shows the first 200 result rows; aggregate counts use the full query result.")
+        if len(refs) > 50:
+            result["limitations"].append("Chat citation list shows the first 50 event references; row-level evidence_refs remain in the result.")
+        return _reply(answer, lang, "DETERMINISTIC_ANALYTICS", True, source_rows,
+                      sufficient=False, extra={"result": result,
+                          "limitations": result["limitations"], "data_as_of": result["generated_at"],
+                          "tool_routing": "MODEL_TOOL" if from_model else "DETERMINISTIC_FALLBACK"})
+    except ValueError as exc:
+        return _reply(f"I cannot compute this query: {exc}." if lang == "en" else f"لا يمكنني حساب هذا الاستعلام: {exc}.",
+                      lang, "DETERMINISTIC_ANALYTICS", False, sufficient=False)
+
+
 _SCHEMA_ROWS = None
 
 
@@ -764,6 +917,11 @@ def create_router(day2_connect, pipeline, inc, use_llm_default, db_errors=(), mo
                     fixed = chat_facts.try_answer(low, lang, getattr(body, "hours", None))
                     if fixed is not None:
                         return fixed
+                    operational = _operational_query(
+                        cur, text, lang, model_provider=model_provider,
+                        use_llm=use_llm_default if body.use_llm is None else body.use_llm)
+                    if operational is not None:
+                        return operational
                     agent = _agent_answer(text, history, session_state, lang, cur, conn, body, pipeline,
                                           model_provider=model_provider)
                     if agent is not None:

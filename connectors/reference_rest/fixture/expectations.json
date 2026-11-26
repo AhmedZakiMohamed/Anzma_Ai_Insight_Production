@@ -1,0 +1,30 @@
+{
+  "fixture_timezone": "Etc/GMT-2",
+  "period": {
+    "start_date": "2026-11-01",
+    "end_date": "2026-11-07",
+    "after_local": "20:00"
+  },
+  "doors_after_hours": {
+    "event_count": 2,
+    "door_counts": {
+      "door-north-01": 1,
+      "door-south-01": 1
+    },
+    "included_source_event_ids": ["evt-door-001", "evt-door-003"],
+    "excluded_event_ids": ["evt-door-002"]
+  },
+  "offline_frequency": {
+    "ranked_assets": [
+      {"asset_external_id": "ahu-03", "offline_incidents": 1, "offline_start_ids": ["evt-offline-001"]},
+      {"asset_external_id": "switch-02", "offline_incidents": 1, "offline_start_ids": ["evt-offline-004"]}
+    ],
+    "repeat_alarm_ids_not_counted": ["evt-offline-002"],
+    "recovery_ids": ["evt-offline-003", "evt-offline-005"]
+  },
+  "notes": [
+    "The fixture is synthetic and is not a real vendor or customer dataset.",
+    "door-north-01 local open time is 20:15; ACCESS_GRANTED does not prove a physical opening.",
+    "Repeated OFFLINE_START during an active outage contributes no extra incident."
+  ]
+}

@@ -341,3 +341,52 @@ Filters: `building_code`, `source_code`, and `state` (`ALIVE`, `SILENT`, `UNKNOW
 Filters: `status` (`open`, `closed`, `all`; default `open`), `cause` (`UNKNOWN`, `NO_DATA`, `SOURCE_SUSPECTED`), `building_code`, `source_code`, `asset_code`, and `since` (RFC 3339 timestamp with timezone; selects `detected_at >= since`). The top-level response echoes the selected status. Each item contains public codes, series type, gap boundaries, detection/closure times, expected interval, `opened_in_work_hours`, cause and update time, and ordered cause history (`old_cause`, `new_cause`, `changed_at`). Database gap IDs are not returned. Closed-gap causes and boundaries are presented as persisted historical evidence.
 
 The dashboard has one additive **Data freshness & sources** panel. It reads these three routes when the existing Refresh action runs. It displays UTC timestamps, marks stale snapshots, escapes all dynamic text, and presents source/gap classifications as evidence rather than confirmed equipment faults. No polling loop, AI/chat integration, equipment-state change, or alert behavior is added by E5.
+
+## Universal platform milestone 1 — deterministic operational analytics
+
+**Status:** Implemented in the working tree; acceptance against a real external system is pending. The synthetic reference REST integration has been tested separately. These routes require operator authentication (bearer token or authenticated session cookie); connector source credentials are not accepted.
+
+### POST `/api/v1/analytics/execute`
+
+Runs one typed deterministic analysis over records already ingested into Core. It does not ask the language model to calculate results.
+
+Request:
+
+```json
+{
+  "analysis": "doors.after_hours",
+  "start_date": "2026-11-01",
+  "end_date": "2026-11-07",
+  "building_code": "MAIN-TOWER",
+  "after_local": "20:00:00"
+}
+```
+
+| Field | Rule |
+|---|---|
+| `analysis` | Required: `doors.after_hours` or `devices.offline_frequency`. |
+| `start_date`, `end_date` | Required ISO calendar dates; inclusive. `end_date` must not precede `start_date`; the range is limited to 366 calendar days. |
+| `building_code` | Optional registered building code. Omitted means all registered buildings. |
+| `after_local` | Time without a timezone, used only for `doors.after_hours`; defaults to `20:00`. Door dates and clock time use each building's IANA timezone. |
+
+The offline analysis counts explicit `offline_start` transitions in the building-local date window. Repeated starts during one open outage count once; only `offline_end` closes an outage. A preceding transition is considered to determine whether an outage was already active at the start of the window. Silence is not treated as an offline event.
+
+Response 200 contains `result_id`, `tool`, normalized `parameters`, `generated_at` (UTC), `source_ids`, `trace_id`, `query_version`, `columns`, `rows`, `total_rows`, `truncated`, and `limitations`. Door rows include the building, door/asset and location, observed UTC and local times, timezone, and event evidence references. Offline rows include the building, device/asset, incident count, and the `offline_start` evidence references.
+
+`completeness` is currently `UNKNOWN` and `complete` is `null`: the response covers stored Core records and does not claim that the upstream source supplied complete history. `quality` is `SOURCE_RECORDS`. Door results are capped at 10,000 rows and set `truncated` when capped. Database errors return 503; invalid dates, unknown building codes, invalid timezones, or unsupported ranges return 422; missing operator credentials return 401.
+
+### Deterministic analytics through `POST /chat`
+
+The existing chat route uses the same typed analyses for recognized after-hours-door and offline-frequency questions. When enabled, the model can select only `analyze_after_hours_doors` or `rank_offline_devices` and supply validated parameters; it receives no SQL tool on this path. Tool dates must match the first two explicit ISO dates (`YYYY-MM-DD`) in the request. Door threshold time is parsed from the request; without a stated time it defaults to 20:00 local. The Core analytics service executes the calculation. A model timeout, invalid tool call, or `use_llm: false` uses the deterministic parser. The chat response includes at most 200 result rows and at most 50 top-level event citations; the result's row-level evidence is retained for returned rows. The answer states that upstream history completeness is unverified. If dates are missing or the request is outside supported bounds, the route asks for the required dates or returns a deterministic limitation rather than inventing a result. The typed API and chat figures should agree for equivalent normalized parameters.
+
+The typed API and chat share the same deterministic service. Their figures and event evidence should agree when the typed API is called for all buildings and uses the default 20:00 threshold. The working-tree acceptance tests verify that parity against the synthetic fixture; real-source parity remains pending.
+
+## Alert stream replay
+
+`GET /api/v1/alerts/stream/latest` returns `latest_event_id`, a starting watermark for a newly connected client. `GET /api/v1/alerts/stream?after_id=<id>&limit=<1..500>` returns persisted alerts with greater IDs in ascending order, plus `next_after_id` and `has_more`. The existing operator authentication applies. The Socket.IO `new_alert` payload and the replay item use the persisted alert `id` as their event cursor; clients deduplicate by that ID and request replay after reconnect. The API is read-only and adds no second alert store.
+
+This contract replays newly stored alert records and returns their current persisted status. It does not provide a separate audit event for every status transition; a durable transition history requires an approved data-model change. Independent reconnect/backfill acceptance remains pending.
+
+## G1 connector setup preview
+
+`POST /api/v1/connectors/test-connection` accepts the `anzma.reference-rest` connector ID, endpoint origin, and bearer credential. It requires the normal Core operator session/bearer authentication. Only exact origins listed in `ANZMA_CONNECTOR_ALLOWED_ORIGINS` are permitted; HTTP also requires the origin in `ANZMA_CONNECTOR_ALLOW_HTTP_ORIGINS`. The test is read-only, rejects redirects, returns connection status/latency/capabilities, and does not persist the submitted credential. This is a synthetic reference preview only: it does not register a source or initiate ingestion and it is not a vendor support-tier qualification.
